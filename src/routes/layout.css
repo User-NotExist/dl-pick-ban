@@ -1,0 +1,237 @@
+@import 'tailwindcss';
+@import '@fontsource/barlow-condensed/600.css';
+@import '@fontsource/barlow-condensed/700.css';
+@import '@fontsource/barlow-condensed/700-italic.css';
+@import '@fontsource/barlow-condensed/800-italic.css';
+
+@theme {
+	--font-display: 'Barlow Condensed', 'Arial Narrow', ui-sans-serif, system-ui, sans-serif;
+	--color-ink: #12100e;
+	--color-panel: #1c1917;
+	--color-line: #3a332d;
+	--color-paper: #efe6d5;
+	--color-amber-team: #ffac11;
+	--color-sapphire-team: #5ec8ec;
+	--color-lane-yellow: #f4d21f;
+	--color-lane-blue: #3f8cff;
+	--color-lane-green: #43c463;
+
+	--animate-rise: rise 0.4s ease-out both;
+	--animate-pop: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+	--animate-wash: wash 0.6s ease-out both;
+	--animate-band: band 2.2s cubic-bezier(0.7, 0, 0.2, 1) both;
+	--animate-dim: dim 2.2s linear both;
+	--animate-flash: flash 0.7s ease-out 0.22s both;
+	--animate-slide: slide 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+	--animate-shine: shine 0.8s ease-out both;
+	--animate-slash: slash 0.3s ease-out both;
+	--animate-sweep: sweep 1.3s cubic-bezier(0.7, 0, 0.2, 1) both;
+	--animate-title: title 1.3s ease both;
+	--animate-leave: leave 0.01s linear 2.4s forwards;
+	--animate-coin-stage: coin-stage 4.5s linear both;
+	--animate-coin-toss: coin-toss 2.8s cubic-bezier(0.3, 0, 0.3, 1) both;
+	--animate-coin-spin: coin-spin 2.8s cubic-bezier(0.15, 0.6, 0.25, 1) both;
+	--animate-glow: glow 1.6s ease-in-out infinite;
+
+	@keyframes rise {
+		from {
+			opacity: 0;
+			transform: translateY(12px);
+		}
+	}
+	@keyframes pop {
+		from {
+			opacity: 0;
+			transform: scale(0.5);
+		}
+	}
+	@keyframes wash {
+		from {
+			opacity: 0;
+		}
+	}
+	/* ban / pick band: in from the acting team's side, hold, out the far side */
+	@keyframes band {
+		0% {
+			transform: translateX(var(--from, -112%));
+		}
+		14%,
+		84% {
+			transform: translateX(0);
+		}
+		100% {
+			transform: translateX(calc(var(--from, -112%) * -1));
+		}
+	}
+	@keyframes dim {
+		0%,
+		100% {
+			opacity: 0;
+		}
+		12%,
+		84% {
+			opacity: 1;
+		}
+	}
+	@keyframes flash {
+		from {
+			opacity: 0.85;
+		}
+		to {
+			opacity: 0;
+		}
+	}
+	@keyframes slide {
+		from {
+			opacity: 0;
+			transform: translateX(var(--slide-from, -60px));
+		}
+	}
+	@keyframes shine {
+		from {
+			transform: translateX(-160%) skewX(-20deg);
+		}
+		to {
+			transform: translateX(360%) skewX(-20deg);
+		}
+	}
+	@keyframes slash {
+		from {
+			scale: 0 1;
+		}
+	}
+	/* phase stinger bars */
+	@keyframes sweep {
+		0% {
+			transform: translateX(-125%) skewX(-16deg);
+		}
+		38%,
+		60% {
+			transform: translateX(0) skewX(-16deg);
+		}
+		100% {
+			transform: translateX(125%) skewX(-16deg);
+		}
+	}
+	@keyframes title {
+		0%,
+		28% {
+			opacity: 0;
+			letter-spacing: 0.6em;
+		}
+		42%,
+		60% {
+			opacity: 1;
+			letter-spacing: 0.12em;
+		}
+		74%,
+		100% {
+			opacity: 0;
+			letter-spacing: 0.12em;
+		}
+	}
+	/* coin flip: stage fades in and out, the coin is tossed up and spins to the winner's face */
+	@keyframes coin-stage {
+		0%,
+		100% {
+			opacity: 0;
+		}
+		6%,
+		93% {
+			opacity: 1;
+		}
+	}
+	@keyframes coin-toss {
+		0% {
+			transform: translateY(60px) scale(0.6);
+		}
+		45% {
+			transform: translateY(-90px) scale(1.2);
+		}
+		88% {
+			transform: translateY(8px) scale(0.97);
+		}
+		100% {
+			transform: translateY(0) scale(1);
+		}
+	}
+	@keyframes coin-spin {
+		from {
+			transform: rotateY(0deg);
+		}
+		to {
+			transform: rotateY(var(--coin-end, 1800deg));
+		}
+	}
+	/* keeps the outgoing screen up until the stinger covers it, then removes it */
+	@keyframes leave {
+		to {
+			visibility: hidden;
+			max-height: 0;
+			overflow: hidden;
+		}
+	}
+	@keyframes glow {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 transparent;
+		}
+		50% {
+			box-shadow: 0 0 16px 2px var(--glow-color, var(--color-paper));
+		}
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		animation-delay: 0s !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* slanted ends, the recurring broadcast-graphics shape */
+@utility slant {
+	clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+
+@layer components {
+	.btn {
+		@apply slant inline-flex items-center justify-center px-6 py-2 font-display text-lg leading-tight font-bold tracking-wider uppercase italic transition disabled:opacity-40;
+	}
+	.btn-primary {
+		@apply bg-paper text-ink hover:bg-white;
+	}
+	.btn-ghost {
+		@apply bg-line/70 text-paper hover:bg-line;
+	}
+	.btn-danger {
+		@apply bg-red-600 text-white hover:bg-red-500;
+	}
+	.btn-sm {
+		@apply px-4 py-1 text-base;
+	}
+	.heading {
+		@apply font-display font-extrabold tracking-wide uppercase italic;
+	}
+}
+
+html {
+	background: var(--color-ink);
+	color: var(--color-paper);
+	color-scheme: dark;
+}
+
+body {
+	/* team colours bleeding in from each side over faint diagonal scan lines */
+	background:
+		radial-gradient(60% 50% at 0% 0%, color-mix(in srgb, var(--color-amber-team) 14%, transparent), transparent),
+		radial-gradient(60% 50% at 100% 0%, color-mix(in srgb, var(--color-sapphire-team) 14%, transparent), transparent),
+		repeating-linear-gradient(115deg, transparent 0 22px, rgb(255 255 255 / 0.018) 22px 24px);
+	background-attachment: fixed;
+	min-height: 100dvh;
+	font-family: ui-sans-serif, system-ui, sans-serif;
+}

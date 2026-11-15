@@ -1,0 +1,14 @@
+services:
+  pickban:
+    build: .
+    image: deadlock-pickban
+    restart: unless-stopped
+    init: true
+    ports:
+      # host:container. Set APP_PORT to publish on a different host port.
+      - '${APP_PORT:-3000}:3000'
+    # Behind a reverse proxy or on a public domain, uncomment and set the site's public URL:
+    # environment:
+    #   ORIGIN: https://dlpickban.user-notexist.com
+    #
+    # Rooms are kept in memory: run a single instance, and expect a restart to clear all rooms.

@@ -1,9 +1,13 @@
 import { HERO_IDS } from '../hero-ids';
 import {
 	BANS_PER_TEAM,
+	DEFAULT_TURN_SECONDS,
 	FLIP_COIN_S,
 	FLIP_REVEAL_DELAY_S,
+	RANDOM_HERO,
 	TEAM_SIZE,
+	TURN_GRACE_S,
+	TURN_TIME_OPTIONS,
 	type Action,
 	type Ban,
 	type LastEvent,
@@ -58,6 +62,13 @@ export interface Room {
 	last: LastEvent | null;
 	seq: number;
 	flipTimer: Timer | null;
+	/** time limit per turn in seconds; 0 means no limit */
+	turnSeconds: number;
+	/** identifies the turn the clock is running for, so it restarts only when the turn changes */
+	turnKey: string | null;
+	turnTimer: Timer | null;
+	/** when the current turn times out (epoch ms), or null when no clock is running */
+	turnDeadline: number | null;
 	listeners: Map<Listener, string>;
 	expiry: Timer | null;
 	/** runs while the host is disconnected; when it fires the host role moves on */
@@ -106,6 +117,10 @@ export function createRoom(): Room {
 		firstPick: null,
 		pickOrder: [],
 		flipTimer: null,
+		turnSeconds: DEFAULT_TURN_SECONDS,
+		turnKey: null,
+		turnTimer: null,
+		turnDeadline: null,
 		last: null,
 		seq: 0,
 		listeners: new Map(),
@@ -128,6 +143,7 @@ function scheduleExpiry(room: Room, ttl = EMPTY_ROOM_TTL) {
 		if (room.listeners.size > 0) return;
 		rooms.delete(room.code);
 		if (room.flipTimer) clearTimeout(room.flipTimer);
+		if (room.turnTimer) clearTimeout(room.turnTimer);
 		if (room.hostTimer) clearTimeout(room.hostTimer);
 		for (const m of room.members) if (m.dropTimer) clearTimeout(m.dropTimer);
 	}, ttl);
@@ -175,6 +191,8 @@ export function snapshot(room: Room, you: string): RoomState {
 		// kept back during the flip so the seat numbers do not give the result away early
 		pickOrder: room.phase === 'flip' ? [] : room.pickOrder,
 		selections,
+		turnSeconds: room.turnSeconds,
+		turnEndsIn: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now()),
 		you
 	};
 }
@@ -344,6 +362,12 @@ function heroTaken(room: Room, hero: string) {
 	return room.bans.some((b) => b.hero === hero) || room.members.some((m) => m.hero === hero);
 }
 
+function randomHero(room: Room): string {
+	const free = HERO_IDS.filter((h) => !heroTaken(room, h));
+	if (!free.length) throw new RoomError('No heroes are left');
+	return free[Math.floor(Math.random() * free.length)];
+}
+
 /**
  * After the last ban: flip the coin for first pick and hold the draft in the `flip` phase
  * while clients play the animation, so nobody can pick before the coin has landed.
@@ -355,6 +379,7 @@ function startFlip(room: Room) {
 	room.flipTimer = setTimeout(
 		() => {
 			finishFlip(room);
+			syncTurnTimer(room);
 			broadcast(room);
 		},
 		(FLIP_REVEAL_DELAY_S + FLIP_COIN_S) * 1000
@@ -370,6 +395,89 @@ export function finishFlip(room: Room) {
 
 function clearSelections(room: Room) {
 	for (const m of room.members) m.selection = null;
+}
+
+/** Record a ban; `hero` is null when the team ran out of time with nothing selected. */
+function applyBan(room: Room, team: Team, hero: string | null) {
+	room.bans.push({ team, hero });
+	room.last = { seq: ++room.seq, type: 'ban', team, hero, player: null };
+	clearSelections(room);
+	if (room.bans.length >= BANS_PER_TEAM * 2) startFlip(room);
+}
+
+function applyPick(room: Room, picker: Member, hero: string) {
+	if (!picker.team) return;
+	picker.hero = hero;
+	room.last = { seq: ++room.seq, type: 'pick', team: picker.team, hero, player: picker.name };
+	clearSelections(room);
+	if (!nextPicker(room)) room.phase = 'done';
+}
+
+/** The player due to pick, if `me` may act for that turn: the picker, or the host while the picker is offline. */
+function requirePicker(room: Room, me: Member): Member {
+	const turn = currentTurn(room);
+	if (turn?.type !== 'pick') throw new RoomError('Not in the pick phase');
+	const picker = room.members.find((m) => m.id === turn.playerId);
+	if (!picker) throw new RoomError('Nobody is due to pick');
+	// the host may pick for a disconnected player so the draft cannot get stuck
+	if (picker !== me && (room.hostId !== me.id || picker.connections > 0))
+		throw new RoomError('It is not your turn to pick');
+	return picker;
+}
+
+/** A selected hero that is still up for grabs, or null (also for the random card). */
+const validSelection = (room: Room, m: Member | undefined) =>
+	m?.selection && m.selection !== RANDOM_HERO && !heroTaken(room, m.selection)
+		? m.selection
+		: null;
+
+/**
+ * The turn ran out of time. A selected hero is locked in; with nothing selected a ban is
+ * forfeited and a pick falls to a random hero.
+ */
+function timeOut(room: Room) {
+	const turn = currentTurn(room);
+	if (!turn) return;
+	if (turn.type === 'ban') {
+		// every teammate's selection counts in a ban: the most recent one wins
+		const latest = room.members
+			.filter((m) => m.team === turn.team && validSelection(room, m))
+			.sort((a, b) => b.selectedAt - a.selectedAt)[0];
+		applyBan(room, turn.team, validSelection(room, latest));
+		return;
+	}
+	const picker = room.members.find((m) => m.id === turn.playerId);
+	if (!picker) return;
+	// while the picker is offline the host's selection stands in for theirs
+	const lead =
+		picker.connections > 0 ? picker : room.members.find((m) => m.id === room.hostId);
+	applyPick(room, picker, validSelection(room, lead) ?? randomHero(room));
+}
+
+/** Start, restart or stop the turn clock so that it matches the turn now in progress. */
+function syncTurnTimer(room: Room) {
+	const key = currentTurn(room)
+		? `${room.phase}:${room.bans.length}:${room.members.filter((m) => m.hero).length}`
+		: null;
+	if (key === room.turnKey) return;
+	room.turnKey = key;
+	if (room.turnTimer) clearTimeout(room.turnTimer);
+	room.turnTimer = null;
+	room.turnDeadline = null;
+	if (!key || room.turnSeconds <= 0) return;
+	const ms = (room.turnSeconds + TURN_GRACE_S) * 1000;
+	room.turnDeadline = Date.now() + ms;
+	room.turnTimer = setTimeout(() => {
+		room.turnTimer = null;
+		try {
+			timeOut(room);
+		} catch {
+			// nothing sensible to lock in; the turn stays open without a clock
+		}
+		syncTurnTimer(room);
+		broadcast(room);
+	}, ms);
+	unref(room.turnTimer);
 }
 
 function requireHost(room: Room, m: Member) {
@@ -475,7 +583,11 @@ export function act(room: Room, token: string, action: Action) {
 				turn.type === 'pick' ? room.members.find((m) => m.id === turn.playerId) : undefined;
 			const proxy = !!picker && room.hostId === me.id && picker.connections === 0;
 			if (me.team !== turn.team && !proxy) throw new RoomError("It is not your team's turn");
-			me.selection = action.hero === null ? null : requireHero(room, action.hero);
+			// the random card can be marked like a hero, but only bans name a hero outright
+			me.selection =
+				action.hero === null || (action.hero === RANDOM_HERO && turn.type === 'pick')
+					? action.hero
+					: requireHero(room, action.hero);
 			me.selectedAt = ++room.seq;
 			break;
 		}
@@ -483,33 +595,25 @@ export function act(room: Room, token: string, action: Action) {
 			const turn = currentTurn(room);
 			if (turn?.type !== 'ban') throw new RoomError('Not in the ban phase');
 			if (me.team !== turn.team) throw new RoomError("It is not your team's turn");
-			const hero = requireHero(room, action.hero);
-			room.bans.push({ team: turn.team, hero });
-			room.last = { seq: ++room.seq, type: 'ban', team: turn.team, hero, player: null };
-			clearSelections(room);
-			if (room.bans.length >= BANS_PER_TEAM * 2) startFlip(room);
+			applyBan(room, turn.team, requireHero(room, action.hero));
 			break;
 		}
 		case 'pick': {
-			const turn = currentTurn(room);
-			if (turn?.type !== 'pick') throw new RoomError('Not in the pick phase');
-			const picker = room.members.find((m) => m.id === turn.playerId);
-			if (!picker) throw new RoomError('Nobody is due to pick');
-			if (picker !== me) {
-				// the host may pick for a disconnected player so the draft cannot get stuck
-				if (room.hostId !== me.id || picker.connections > 0)
-					throw new RoomError('It is not your turn to pick');
-			}
-			picker.hero = requireHero(room, action.hero);
-			room.last = {
-				seq: ++room.seq,
-				type: 'pick',
-				team: turn.team,
-				hero: picker.hero,
-				player: picker.name
-			};
-			clearSelections(room);
-			if (!nextPicker(room)) room.phase = 'done';
+			const picker = requirePicker(room, me);
+			applyPick(
+				room,
+				picker,
+				action.hero === RANDOM_HERO ? randomHero(room) : requireHero(room, action.hero)
+			);
+			break;
+		}
+		case 'setTimer': {
+			requireHost(room, me);
+			if (room.phase !== 'lobby')
+				throw new RoomError('The timer can only be changed in the lobby');
+			if (!(TURN_TIME_OPTIONS as readonly number[]).includes(action.seconds))
+				throw new RoomError('Invalid time limit');
+			room.turnSeconds = action.seconds;
 			break;
 		}
 		case 'reset': {
@@ -548,5 +652,6 @@ export function act(room: Room, token: string, action: Action) {
 		default:
 			throw new RoomError('Unknown action');
 	}
+	syncTurnTimer(room);
 	broadcast(room);
 }

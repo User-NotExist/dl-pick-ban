@@ -14,7 +14,8 @@ export interface Player {
 
 export interface Ban {
 	team: Team;
-	hero: string;
+	/** null when the team ran out of time without selecting a hero: the ban is forfeited */
+	hero: string | null;
 }
 
 export type Turn =
@@ -27,12 +28,13 @@ export interface LastEvent {
 	seq: number;
 	type: 'ban' | 'pick';
 	team: Team;
-	hero: string;
+	/** null for a ban forfeited because the team ran out of time */
+	hero: string | null;
 	/** name of the player who received the hero (picks only) */
 	player: string | null;
 }
 
-/** A hero a player has selected but not confirmed. */
+/** A hero a player has selected but not confirmed; `RANDOM_HERO` during picks for "surprise me". */
 export interface Selection {
 	playerId: string;
 	hero: string;
@@ -55,6 +57,13 @@ export interface RoomState {
 	 * and to spectators; the opposing team receives an empty list.
 	 */
 	selections: Selection[];
+	/** time limit per ban/pick turn in seconds, chosen by the host; 0 means no limit */
+	turnSeconds: number;
+	/**
+	 * Milliseconds left in the current turn when this snapshot was made, or null when no clock
+	 * is running. Sent as a duration so clients do not depend on their clock matching the server's.
+	 */
+	turnEndsIn: number | null;
 	/** id of the player receiving this snapshot */
 	you: string;
 }
@@ -66,15 +75,25 @@ export type Action =
 	| { type: 'move'; id: string; team: Team | null; slot?: number }
 	| { type: 'shuffle' }
 	| { type: 'start' }
-	/** mark (or clear) the hero you are considering before confirming */
+	/** mark (or clear) the hero you are considering before confirming; `RANDOM_HERO` is allowed during picks */
 	| { type: 'select'; hero: string | null }
 	| { type: 'ban'; hero: string }
+	/** `hero: RANDOM_HERO` locks in a random available hero, rolled by the server */
 	| { type: 'pick'; hero: string }
+	/** host only, in the lobby: set the time limit per turn (one of TURN_TIME_OPTIONS) */
+	| { type: 'setTimer'; seconds: number }
 	| { type: 'reset' }
 	| { type: 'kick'; id: string };
 
 export const TEAM_SIZE = 6;
 export const BANS_PER_TEAM = 2;
+/** stands in for a hero id in a pick or a pick selection: the server rolls the hero on lock-in */
+export const RANDOM_HERO = 'random';
+/** selectable time limits per turn, in seconds; 0 turns the clock off */
+export const TURN_TIME_OPTIONS = [0, 20, 30, 45, 60, 90] as const;
+export const DEFAULT_TURN_SECONDS = 30;
+/** added to every turn so the reveal animation of the previous one does not eat into it */
+export const TURN_GRACE_S = 2;
 /** Client timeline of the `flip` phase: wait for the last ban's reveal band, then the coin. */
 export const FLIP_REVEAL_DELAY_S = 2;
 export const FLIP_COIN_S = 4.5;

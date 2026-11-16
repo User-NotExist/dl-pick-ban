@@ -31,8 +31,8 @@
 		<span class="hidden text-xs font-semibold tracking-wider text-paper/50 uppercase sm:inline"
 			>Bans</span
 		>
-		{#each room.bans.filter((b) => b.team === team) as ban (ban.hero)}
-			{@const hero = HERO_BY_ID.get(ban.hero)}
+		{#each room.bans.filter((b) => b.team === team && b.hero) as ban (ban.hero)}
+			{@const hero = HERO_BY_ID.get(ban.hero ?? '')}
 			<div
 				class="flex min-w-0 items-center gap-2 rounded bg-ink/60 {team === 'B'
 					? 'flex-row-reverse pl-2'

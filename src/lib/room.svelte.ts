@@ -7,6 +7,8 @@ export class RoomClient {
 	/** why the server refused the connection (room full, kick cooldown, rate limit); empty if it did not */
 	rejected = $state('');
 	error = $state('');
+	/** when the current turn times out, on this device's clock; null when no clock is running */
+	deadline = $state<number | null>(null);
 
 	#source: EventSource;
 	#code: string;
@@ -31,7 +33,9 @@ export class RoomClient {
 		});
 		this.#source.addEventListener('state', (e) => {
 			this.connected = true;
-			this.state = JSON.parse((e as MessageEvent).data);
+			const state: RoomState = JSON.parse((e as MessageEvent).data);
+			this.state = state;
+			this.deadline = state.turnEndsIn === null ? null : Date.now() + state.turnEndsIn;
 		});
 		this.#source.addEventListener('kicked', () => {
 			this.kicked = true;

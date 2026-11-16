@@ -4,7 +4,9 @@
 
 	let { last }: { last: LastEvent } = $props();
 
-	const hero = $derived(HERO_BY_ID.get(last.hero));
+	const hero = $derived(last.hero ? HERO_BY_ID.get(last.hero) : undefined);
+	/** the team ran out of time with nothing selected */
+	const noBan = $derived(last.hero === null);
 	const ban = $derived(last.type === 'ban');
 	const right = $derived(last.team === 'B');
 	const teamColor = $derived(right ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)');
@@ -40,8 +42,16 @@
 				class="relative aspect-[14/19] h-[118%] shrink-0 animate-slide overflow-hidden border-x-4 shadow-2xl [animation-delay:0.18s]"
 				style:border-color={accent}
 			>
-				<img src={ban ? hero?.banned : hero?.card} alt="" class="h-full w-full object-cover" />
-				{#if ban}
+				{#if noBan}
+					<div
+						class="flex h-full w-full items-center justify-center bg-panel font-display text-7xl font-extrabold text-paper/30 sm:text-9xl"
+					>
+						—
+					</div>
+				{:else}
+					<img src={ban ? hero?.banned : hero?.card} alt="" class="h-full w-full object-cover" />
+				{/if}
+				{#if ban && !noBan}
 					<span class="absolute inset-0 bg-red-600/25"></span>
 					<span
 						class="absolute top-1/2 left-[-20%] h-1.5 w-[140%] -rotate-[52deg] animate-slash bg-red-500 [animation-delay:0.5s]"
@@ -57,7 +67,7 @@
 					{ban ? TEAM_NAMES[last.team] : `${last.player} · ${TEAM_NAMES[last.team]}`}
 				</div>
 				<div class="text-5xl leading-none font-display font-extrabold uppercase italic sm:text-8xl">
-					{hero?.name}
+					{noBan ? 'No ban' : hero?.name}
 				</div>
 				<div
 					class="mt-2 inline-block -skew-x-12 px-3 py-0.5 text-sm font-display font-extrabold italic tracking-[0.2em] uppercase sm:mt-3 sm:text-xl {ban
@@ -65,7 +75,7 @@
 						: 'text-ink'}"
 					style:background-color={accent}
 				>
-					{ban ? 'Banned' : 'Selected'}
+					{noBan ? 'Time ran out' : ban ? 'Banned' : 'Selected'}
 				</div>
 			</div>
 		</div>

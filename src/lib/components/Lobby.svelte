@@ -7,6 +7,7 @@
 		SLOTS_PER_LANE,
 		TEAM_NAMES,
 		TEAM_SIZE,
+		TURN_TIME_OPTIONS,
 		type Player,
 		type RoomState,
 		type Team
@@ -279,8 +280,24 @@
 			>
 				Start draft
 			</button>
+			<label class="flex items-center gap-2 text-sm text-paper/70">
+				Time per turn
+				<select
+					value={room.turnSeconds}
+					onchange={(e) =>
+						client.send({ type: 'setTimer', seconds: Number(e.currentTarget.value) })}
+					class="rounded border border-line bg-ink px-2 py-1.5 text-paper"
+				>
+					{#each TURN_TIME_OPTIONS as s (s)}
+						<option value={s}>{s ? `${s} seconds` : 'No limit'}</option>
+					{/each}
+				</select>
+			</label>
 			{#if blocker}<span class="text-sm text-paper/50">{blocker}</span>{/if}
 		{:else}
+			<span class="text-sm text-paper/60">
+				Time per turn: {room.turnSeconds ? `${room.turnSeconds} seconds` : 'no limit'} ·
+			</span>
 			<span class="text-sm text-paper/60">
 				{blocker || 'Waiting for the host to start the draft'}
 			</span>
@@ -301,5 +318,9 @@
 		A coin flip at the start decides which team picks first. That team picks once, then the teams
 		take two picks each in turn, and the first team gets the last pick. Within a team, players
 		pick from the first Yellow slot down to the last Green slot.
+		{#if room.turnSeconds}
+			Each ban and pick has {room.turnSeconds} seconds: when time runs out the selected hero is
+			locked in. With nothing selected, a ban is forfeited and a pick becomes a random hero.
+		{/if}
 	</p>
 </div>

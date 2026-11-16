@@ -1,11 +1,13 @@
 <script lang="ts">
 	import PatronBanner from './PatronBanner.svelte';
-	import { HEROES, HERO_BY_ID } from '#lib/heroes.ts';
+	import TurnCue from './TurnCue.svelte';
+	import { HEROES, HERO_BY_ID, RANDOM } from '#lib/heroes.ts';
 	import { LANE_STYLE } from '#lib/lanes.ts';
 	import type { RoomClient } from '#lib/room.svelte.ts';
 	import {
 		BANS_PER_TEAM,
 		TEAM_NAMES,
+		TURN_GRACE_S,
 		laneOfSlot,
 		type Player,
 		type RoomState,
@@ -27,6 +29,23 @@
 	const proxy = $derived(!!picker && picker.id !== room.you && isHost && !picker.online);
 
 	const banned = $derived(new Set(room.bans.map((b) => b.hero)));
+
+	// Turn clock. The extra grace the server allows is hidden: the display holds at the full
+	// limit while the previous reveal plays, then counts down.
+	let now = $state(Date.now());
+	$effect(() => {
+		if (client.deadline === null) return;
+		now = Date.now();
+		const tick = setInterval(() => (now = Date.now()), 200);
+		return () => clearInterval(tick);
+	});
+	const msLeft = $derived(
+		client.deadline === null || !turn
+			? null
+			: Math.max(0, Math.min(client.deadline - now, room.turnSeconds * 1000))
+	);
+	const secondsLeft = $derived(msLeft === null ? null : Math.ceil(msLeft / 1000));
+	const urgent = $derived(secondsLeft !== null && secondsLeft <= 5);
 	const pickedBy = $derived(
 		new Map(room.players.filter((p) => p.hero).map((p) => [p.hero as string, p]))
 	);
@@ -88,14 +107,41 @@
 			.join(' · ');
 	});
 
+	/** it is this viewer's turn: the status panel fills with the team colour */
+	const myTurn = $derived(canAct && !!turn);
+	/** a teammate is picking: this viewer can only suggest */
+	const suggesting = $derived(canSelect && !canAct);
+
 	const status = $derived.by(() => {
 		if (room.phase === 'flip') return 'Coin flip';
 		if (!turn) return 'Draft complete';
 		const team = TEAM_NAMES[turn.team];
 		if (turn.type === 'ban') {
-			return `${team} ban`;
+			return canAct ? 'Your team bans' : `${team} ban`;
 		}
+		if (proxy) return `Pick for ${picker?.name}`;
+		if (canAct) return 'Your pick';
 		return `${picker?.name ?? team} picks`;
+	});
+
+	/** changes with every turn, so the "your turn" call-out replays */
+	const turnKey = $derived(
+		turn
+			? `${turn.type}:${turn.type === 'ban' ? room.bans.length : room.players.filter((p) => p.hero).length}`
+			: ''
+	);
+	/**
+	 * Seconds to hold the call-out back so it follows the phase stinger (first turn of a phase)
+	 * or the previous turn's reveal band, less whatever part of the turn has already passed.
+	 */
+	const cueDelay = $derived.by(() => {
+		if (!turn) return 0;
+		const first =
+			turn.type === 'ban' ? room.bans.length === 0 : !room.players.some((p) => p.hero);
+		const lead = first ? 1.3 : 2;
+		if (client.deadline === null) return lead;
+		const elapsed = room.turnSeconds + TURN_GRACE_S - (client.deadline - Date.now()) / 1000;
+		return Math.max(0, lead - elapsed);
 	});
 
 	const phaseLabel = $derived.by(() => {
@@ -113,15 +159,22 @@
 		if (!turn) return '';
 		if (turn.type === 'ban') {
 			if (!me?.team) return 'You are spectating';
-			return canAct ? 'Your team bans: choose a hero' : 'Waiting for the other team';
+			return canAct ? 'Choose a hero to ban' : 'Waiting for the other team';
 		}
-		if (picker?.id === room.you) return 'Your turn: pick your hero';
+		if (picker?.id === room.you) return 'Choose your hero below';
 		if (proxy) return `${picker?.name} is offline. As host you can pick for them.`;
 		if (picker && !picker.online) return `${picker.name} is offline. The host can pick for them.`;
 		if (!me?.team) return 'You are spectating';
 		return canSelect
 			? `Waiting for ${picker?.name}. Click a hero to suggest it.`
 			: `Waiting for ${picker?.name}`;
+	});
+
+	const timeoutNote = $derived.by(() => {
+		if (!turn || !canAct || choice) return '';
+		return turn.type === 'ban'
+			? 'No ban is made if time runs out'
+			: 'A random hero is picked if time runs out';
 	});
 
 	function confirm() {
@@ -135,17 +188,30 @@
 
 	const teamText = (t: Team) => (t === 'A' ? 'text-amber-team' : 'text-sapphire-team');
 	const teamBorder = (t: Team) => (t === 'A' ? 'border-amber-team' : 'border-sapphire-team');
+	const teamBg = (t: Team) => (t === 'A' ? 'bg-amber-team' : 'bg-sapphire-team');
+	const teamRing = (t: Team) => (t === 'A' ? 'ring-amber-team' : 'ring-sapphire-team');
+	const teamColor = (t: Team) =>
+		t === 'A' ? 'var(--color-amber-team)' : 'var(--color-sapphire-team)';
 </script>
+
+{#snippet turnTag(label: string, team: Team | null)}
+	<span
+		class="slant inline-block px-2 font-display text-xs font-bold tracking-wider whitespace-nowrap text-ink uppercase {team
+			? teamBg(team)
+			: 'bg-paper'}">{label}</span
+	>
+{/snippet}
 
 {#snippet banSlots(team: Team)}
 	{@const bans = room.bans.filter((b) => b.team === team)}
 	<div class="flex gap-2">
 		{#each { length: BANS_PER_TEAM }, i}
-			{@const hero = bans[i] ? HERO_BY_ID.get(bans[i].hero) : undefined}
+			{@const hero = HERO_BY_ID.get(bans[i]?.hero ?? '')}
+			{@const skipped = !!bans[i] && !bans[i].hero}
 			{@const pending = turn?.type === 'ban' && turn.team === team && i === bans.length ? ghost : undefined}
 			<div
 				class="relative flex aspect-[14/19] w-12 items-center justify-center overflow-hidden rounded border border-dashed border-line bg-ink/60 text-xs text-paper/30 sm:w-14"
-				title={hero ? `${hero.name} (banned)` : 'Ban slot'}
+				title={hero ? `${hero.name} (banned)` : skipped ? 'Ban forfeited: time ran out' : 'Ban slot'}
 			>
 				{#if hero}
 					<img
@@ -161,6 +227,8 @@
 						title="Considering {pending.name}"
 						class="h-full w-full animate-pulse object-cover opacity-60"
 					/>
+				{:else if skipped}
+					<span class="text-lg leading-none" aria-label="No ban">—</span>
 				{:else}
 					ban
 				{/if}
@@ -176,14 +244,16 @@
 	{@const style = LANE_STYLE[lane.id]}
 	{@const picking = picker?.id === p.id}
 	{@const pending = picking ? ghost : undefined}
+	{@const mine = picking && canAct}
 	<!-- Team B is mirrored so both rosters face the hero pool, as on a broadcast overlay. -->
 	<li
 		class="flex h-14 items-center gap-2 overflow-hidden bg-panel/90 transition sm:h-16 {style.border} {team ===
 		'B'
 			? 'flex-row-reverse border-r-4 text-right'
-			: 'border-l-4'} {picking ? 'animate-glow ring-2 ring-paper' : ''} {p.online
-			? ''
-			: 'opacity-50'}"
+			: 'border-l-4'} {picking
+			? `animate-glow ring-2 ${mine ? teamRing(team) : 'ring-paper'}`
+			: ''} {p.online || mine ? '' : 'opacity-50'}"
+		style:--glow-color={mine ? teamColor(team) : null}
 	>
 		<div
 			class="flex aspect-[14/19] h-full shrink-0 items-center justify-center overflow-hidden bg-line/40 text-paper/30"
@@ -203,15 +273,16 @@
 			</div>
 			<div class="truncate text-xs text-paper/60">
 				<span class="font-semibold {style.text}">{lane.name}</span>
-				· {hero
-					? hero.name
-					: pending
-						? `${pending.name}?`
-						: picking
-							? 'picking now'
-							: p.online
-								? 'no hero yet'
-								: 'offline'}
+				·
+				{#if picking && !hero}
+					{@render turnTag(
+						mine ? (p.id === room.you ? 'Your pick' : 'You pick') : 'Picking',
+						mine ? team : null
+					)}
+					{#if pending}{pending.name}?{/if}
+				{:else}
+					{hero ? hero.name : p.online ? 'no hero yet' : 'offline'}
+				{/if}
 			</div>
 		</div>
 		<span
@@ -234,6 +305,9 @@
 				<span class="font-display text-sm font-bold tracking-[0.25em] text-paper/50 uppercase"
 					>Bans</span
 				>
+				{#if turn?.type === 'ban' && turn.team === team}
+					{@render turnTag(canAct ? 'Your ban' : 'Banning', canAct ? team : null)}
+				{/if}
 				{#if room.firstPick === team && room.phase !== 'flip'}
 					<span
 						class="slant px-2 font-display text-xs font-bold tracking-wider whitespace-nowrap text-ink uppercase {team ===
@@ -273,33 +347,83 @@
 	{@render teamHead('A')}
 
 	<div
-		class="sticky top-0 z-10 flex flex-col items-center justify-center gap-1 overflow-hidden border-b-4 bg-panel/95 px-4 py-3 text-center backdrop-blur transition-colors duration-300 [grid-area:st] {turn
+		class="sticky top-0 z-10 flex flex-col items-center justify-center gap-1 overflow-hidden border-b-4 px-4 py-3 text-center transition-colors duration-300 [grid-area:st] {turn
 			? teamBorder(turn.team)
-			: 'border-line'} {canAct ? 'animate-glow' : ''}"
+			: 'border-line'} {myTurn && turn
+			? `animate-glow text-ink ${teamBg(turn.team)}`
+			: 'bg-panel/95 backdrop-blur'} {suggesting && turn
+			? `ring-2 ring-inset ${teamRing(turn.team)}`
+			: ''}"
 		style:--glow-color={turn?.team === 'B' ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)'}
 		style:--slide-from={turn?.team === 'B' ? '80px' : '-80px'}
 	>
 		{#key status}
-			<span class="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine bg-white/15"
+			<span
+				class="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine {myTurn
+					? 'bg-white/40'
+					: 'bg-white/15'}"
 			></span>
 		{/key}
 		{#if phaseLabel}
-			<div class="font-display text-sm font-semibold tracking-[0.35em] text-paper/60 uppercase">
+			<div
+				class="font-display text-sm font-semibold tracking-[0.35em] uppercase {myTurn
+					? 'text-ink/70'
+					: 'text-paper/60'}"
+			>
 				{phaseLabel}
 			</div>
 		{/if}
 		{#key status}
 			<div
-				class="heading animate-slide text-3xl leading-none sm:text-5xl {turn
-					? teamText(turn.team)
-					: ''}"
+				class="heading max-w-full animate-slide truncate leading-none {myTurn
+					? 'text-4xl text-ink sm:text-6xl'
+					: `text-3xl sm:text-5xl ${turn ? teamText(turn.team) : ''}`}"
 			>
 				{status}
 			</div>
 		{/key}
-		{#if hint}<div class="text-sm {canAct ? 'text-paper' : 'text-paper/50'}">{hint}</div>{/if}
+		{#if secondsLeft !== null && msLeft !== null}
+			<div
+				class="flex w-full max-w-xs items-center gap-2"
+				role="timer"
+				aria-label="{secondsLeft} seconds left"
+			>
+				<div class="h-1.5 flex-1 overflow-hidden rounded-full {myTurn ? 'bg-ink/25' : 'bg-line/60'}">
+					<div
+						class="h-full rounded-full transition-[width] duration-200 ease-linear {urgent
+							? myTurn
+								? 'bg-red-700'
+								: 'bg-red-500'
+							: myTurn
+								? 'bg-ink'
+								: turn?.team === 'B'
+									? 'bg-sapphire-team'
+									: 'bg-amber-team'}"
+						style:width="{(msLeft / (room.turnSeconds * 1000)) * 100}%"
+					></div>
+				</div>
+				<span
+					class="heading w-10 text-right text-2xl leading-none tabular-nums {urgent
+						? `animate-pulse ${myTurn ? 'text-red-800' : 'text-red-400'}`
+						: myTurn
+							? 'text-ink'
+							: 'text-paper'}">{secondsLeft}</span
+				>
+			</div>
+		{/if}
+		{#if hint}
+			<div class="text-sm {myTurn ? 'font-semibold text-ink' : suggesting ? 'text-paper' : 'text-paper/50'}">
+				{hint}
+			</div>
+		{/if}
+		{#if secondsLeft !== null && timeoutNote}
+			<div class="text-xs {myTurn ? 'text-ink/70' : 'text-paper/50'}">{timeoutNote}</div>
+		{/if}
 		{#if considering}
-			<div class="max-w-full truncate text-sm font-semibold text-paper/80" aria-live="polite">
+			<div
+				class="max-w-full truncate text-sm font-semibold {myTurn ? 'text-ink/80' : 'text-paper/80'}"
+				aria-live="polite"
+			>
 				{considering}
 			</div>
 		{/if}
@@ -309,7 +433,7 @@
 					<button
 						onclick={confirm}
 						disabled={!choice}
-						class="btn {turn.type === 'ban' ? 'btn-danger' : 'btn-primary'} px-8"
+						class="btn {turn.type === 'ban' ? 'btn-danger' : 'btn-ink'} px-8"
 					>
 						{#if choice}
 							{turn.type === 'ban' ? 'Ban' : 'Pick'}
@@ -338,7 +462,8 @@
 			? 'var(--color-sapphire-team)'
 			: 'var(--color-amber-team)'}
 	>
-			{#each HEROES as hero (hero.id)}
+			<!-- during picks the pool ends with the random card: marked and confirmed like a hero -->
+			{#each turn?.type === 'pick' ? [...HEROES, RANDOM] : HEROES as hero (hero.id)}
 				{@const isBanned = banned.has(hero.id)}
 				{@const owner = pickedBy.get(hero.id)}
 				{@const available = !isBanned && !owner}
@@ -349,7 +474,7 @@
 					disabled={!canSelect || !available}
 					onclick={() => select(hero.id)}
 					aria-pressed={mySelection === hero.id}
-					title={hero.name}
+					title={hero === RANDOM ? 'A random available hero, rolled when you lock it in' : hero.name}
 					class="group relative aspect-[14/19] overflow-hidden border-2 bg-panel transition duration-200
 						{mySelection === hero.id
 						? 'scale-105 border-paper'
@@ -418,3 +543,14 @@
 
 	{@render teamSeats('B')}
 </div>
+
+{#if myTurn && turn}
+	{#key turnKey}
+		<TurnCue
+			team={turn.team}
+			title={status}
+			eyebrow={turn.type === 'ban' ? 'Your turn to ban' : 'Your turn to pick'}
+			delay={cueDelay}
+		/>
+	{/key}
+{/if}

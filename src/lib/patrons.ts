@@ -9,3 +9,6 @@ export const PATRON_ART: Record<Team, string> = { A: hiddenKing, B: archmother }
 
 /** Square patron emblems with transparent backgrounds. */
 export const PATRON_ICON: Record<Team, string> = { A: hiddenKingIcon, B: archmotherIcon };
+
+/** The flat background colour of each patron's art, for extending it past the image. */
+export const PATRON_COLOR: Record<Team, string> = { A: '#ffac11', B: '#3874ae' };

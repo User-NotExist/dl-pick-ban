@@ -1,6 +1,6 @@
 <script lang="ts">
-	import PatronBanner from './PatronBanner.svelte';
 	import { LANE_STYLE } from '#lib/lanes.ts';
+	import { PATRON_ART, PATRON_COLOR } from '#lib/patrons.ts';
 	import type { RoomClient } from '#lib/room.svelte.ts';
 	import {
 		LANES,
@@ -20,6 +20,12 @@
 	const teamB = $derived(room.players.filter((p) => p.team === 'B'));
 	const me = $derived(room.players.find((p) => p.id === room.you));
 	const spectators = $derived(room.players.filter((p) => !p.team));
+
+	/**
+	 * Seat indexes within a lane, first seat first. The first seat is the front row, next to the
+	 * midline, for both teams, so the top team renders them in reverse.
+	 */
+	const SEATS = Array.from({ length: SLOTS_PER_LANE }, (_, i) => i);
 
 	const blocker = $derived.by(() => {
 		if (!teamA.length || !teamB.length) return 'Each team needs at least one player';
@@ -136,63 +142,64 @@
 	{/if}
 {/snippet}
 
-{#snippet teamColumn(team: Team, players: Player[])}
-	<section
-		class="flex flex-col overflow-hidden border-t-4 bg-panel/90 {team === 'A'
-			? 'border-amber-team'
-			: 'border-sapphire-team'}"
-	>
-		<PatronBanner {team} class="aspect-[3/1]" />
-		<div class="flex flex-col gap-3 p-3 sm:p-4">
-			<div class="text-sm text-paper/50">
-				{players.length}/{TEAM_SIZE} players · pick a lane slot
-			</div>
-			<div class="grid grid-cols-3 gap-2">
-				{#each LANES as lane, laneIndex (lane.id)}
-					{@const style = LANE_STYLE[lane.id]}
-					<div class="flex min-w-0 flex-col gap-1.5">
-						<div class="flex items-center gap-1.5 font-display text-lg leading-tight font-bold tracking-wider uppercase {style.text}">
-							<span class="h-2.5 w-2.5 rounded-full {style.bg}"></span>
-							{lane.name}
-						</div>
-						{#each { length: SLOTS_PER_LANE }, i}
-							{@const slot = laneIndex * SLOTS_PER_LANE + i}
-							{@const p = players.find((x) => x.slot === slot)}
-							{#if p}
-								<div
-									class="flex h-11 animate-pop items-center gap-1 rounded border-l-4 bg-ink/60 px-2 {style.border} {p.online
-										? ''
-										: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''} {dropTarget ===
-									`${team}${slot}`
-										? 'bg-paper/20'
-										: ''}"
-									{...isHost ? dropZone(`${team}${slot}`, team, slot) : {}}
-								>
-									{@render nameTag(p, () => moveTo(picked, team, slot))}
-									{@render badges(p)}
-								</div>
-							{:else}
-								<button
-									onclick={() =>
-										moving ? moveTo(moving.id, team, slot) : client.send({ type: 'setTeam', team, slot })}
-									class="h-11 rounded border border-dashed px-2 text-sm text-paper/50 transition hover:bg-paper/5 hover:text-paper {style.border} {dropTarget ===
-									`${team}${slot}`
-										? 'bg-paper/20 text-paper'
-										: ''}"
-									aria-label={moving
-										? `Move ${moving.name} to ${lane.name} slot ${i + 1} on ${TEAM_NAMES[team]}`
-										: `Take ${lane.name} slot ${i + 1} on ${TEAM_NAMES[team]}`}
-									{...isHost ? dropZone(`${team}${slot}`, team, slot) : {}}
-								>
-									{moving ? 'Move here' : 'Take slot'}
-								</button>
-							{/if}
-						{/each}
-					</div>
-				{/each}
-			</div>
+<!-- Patron art strip. The art has a flat background, so the strip continues it to full width. -->
+{#snippet banner(team: Team)}
+	<h2 class="flex h-20 justify-center sm:h-28" style:background-color={PATRON_COLOR[team]}>
+		<img
+			src={PATRON_ART[team]}
+			alt={TEAM_NAMES[team]}
+			width="1280"
+			height="960"
+			class="aspect-[7/2] h-full w-auto max-w-full object-cover object-[50%_40%]"
+		/>
+	</h2>
+{/snippet}
+
+{#snippet seat(team: Team, players: Player[], laneIndex: number, i: number)}
+	{@const lane = LANES[laneIndex]}
+	{@const style = LANE_STYLE[lane.id]}
+	{@const slot = laneIndex * SLOTS_PER_LANE + i}
+	{@const p = players.find((x) => x.slot === slot)}
+	{#if p}
+		<div
+			class="flex h-11 min-w-0 animate-pop items-center gap-1 rounded border-l-4 bg-ink/60 px-2 {style.border} {p.online
+				? ''
+				: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''} {dropTarget ===
+			`${team}${slot}`
+				? 'bg-paper/20'
+				: ''}"
+			{...isHost ? dropZone(`${team}${slot}`, team, slot) : {}}
+		>
+			{@render nameTag(p, () => moveTo(picked, team, slot))}
+			{@render badges(p)}
 		</div>
-	</section>
+	{:else}
+		<button
+			onclick={() =>
+				moving ? moveTo(moving.id, team, slot) : client.send({ type: 'setTeam', team, slot })}
+			class="h-11 min-w-0 rounded border border-dashed px-2 text-sm text-paper/50 transition hover:bg-paper/5 hover:text-paper {style.border} {dropTarget ===
+			`${team}${slot}`
+				? 'bg-paper/20 text-paper'
+				: ''}"
+			aria-label={moving
+				? `Move ${moving.name} to ${lane.name} slot ${i + 1} on ${TEAM_NAMES[team]}`
+				: `Take ${lane.name} slot ${i + 1} on ${TEAM_NAMES[team]}`}
+			{...isHost ? dropZone(`${team}${slot}`, team, slot) : {}}
+		>
+			{moving ? 'Move here' : 'Take slot'}
+		</button>
+	{/if}
+{/snippet}
+
+<!-- One team's half of the board: a row per seat, a column per lane. -->
+{#snippet teamRows(team: Team, players: Player[], seats: number[])}
+	<div class="grid grid-cols-3 gap-2" role="group" aria-label={TEAM_NAMES[team]}>
+		{#each seats as i (i)}
+			{#each LANES as lane, laneIndex (lane.id)}
+				{@render seat(team, players, laneIndex, i)}
+			{/each}
+		{/each}
+	</div>
 {/snippet}
 
 <div class="flex animate-rise flex-col gap-6">
@@ -211,11 +218,28 @@
 		</span>
 	</div>
 
-	<div class="grid items-center gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-		{@render teamColumn('A', teamA)}
-		<div class="heading text-center text-4xl text-paper/50" aria-hidden="true">VS</div>
-		{@render teamColumn('B', teamB)}
-	</div>
+	<!-- Top-down board: the Archmother at the top, the Hidden King at the bottom, lanes as columns. -->
+	<section class="flex flex-col overflow-hidden border-y-4 border-t-sapphire-team border-b-amber-team bg-panel/90">
+		{@render banner('B')}
+		<div class="flex flex-col gap-3 p-3 sm:p-4">
+			<div class="text-sm text-paper/50">{teamB.length}/{TEAM_SIZE} players</div>
+			{@render teamRows('B', teamB, [...SEATS].reverse())}
+			<div class="grid grid-cols-3 gap-2 py-1">
+				{#each LANES as lane (lane.id)}
+					{@const style = LANE_STYLE[lane.id]}
+					<div class="flex min-w-0 items-center gap-1.5 font-display text-base leading-tight font-bold tracking-wider uppercase sm:text-lg {style.text}">
+						<span class="h-px min-w-0 flex-1 bg-line"></span>
+						<span class="h-2.5 w-2.5 shrink-0 rounded-full {style.bg}"></span>
+						{lane.name}
+						<span class="h-px min-w-0 flex-1 bg-line"></span>
+					</div>
+				{/each}
+			</div>
+			{@render teamRows('A', teamA, SEATS)}
+			<div class="text-sm text-paper/50">{teamA.length}/{TEAM_SIZE} players</div>
+		</div>
+		{@render banner('A')}
+	</section>
 
 	<section
 		class="border bg-panel/90 p-4 transition-colors {dropTarget === 'spectators'
@@ -317,7 +341,7 @@
 	<p class="text-sm text-paper/40">
 		A coin flip at the start decides which team picks first. That team picks once, then the teams
 		take two picks each in turn, and the first team gets the last pick. Within a team, players
-		pick from the first Yellow slot down to the last Green slot.
+		pick lane by lane from Yellow to Green, the front-row player (next to the midline) first.
 		{#if room.turnSeconds}
 			Each ban and pick has {room.turnSeconds} seconds: when time runs out the selected hero is
 			locked in. With nothing selected, a ban is forfeited and a pick becomes a random hero.

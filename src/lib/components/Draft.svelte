@@ -28,6 +28,13 @@
 	/** the host may pick for a disconnected player */
 	const proxy = $derived(!!picker && picker.id !== room.you && isHost && !picker.online);
 
+	/** the host bans for a team made up only of fake players */
+	const hostBans = $derived.by(() => {
+		if (!isHost || turn?.type !== 'ban') return false;
+		const team = room.players.filter((p) => p.team === turn.team);
+		return team.length > 0 && team.every((p) => p.fake);
+	});
+
 	const banned = $derived(new Set(room.bans.map((b) => b.hero)));
 
 	// Turn clock. The extra grace the server allows is hidden: the display holds at the full
@@ -52,12 +59,14 @@
 
 	const canAct = $derived.by(() => {
 		if (!turn || !me) return false;
-		if (turn.type === 'ban') return me.team === turn.team;
+		if (turn.type === 'ban') return me.team === turn.team || hostBans;
 		return picker?.id === me.id || proxy;
 	});
 
 	/** may mark a hero: the team on turn (teammates can suggest during picks), or the host as proxy */
-	const canSelect = $derived(!!turn && !!me && (me.team === turn.team || proxy));
+	const canSelect = $derived(
+		!!turn && !!me && (turn.type === 'ban' ? canAct : me.team === turn.team || proxy)
+	);
 
 	/**
 	 * Whose selection counts as "the" pending pick: the player on turn, or the host while
@@ -117,7 +126,8 @@
 		if (!turn) return 'Draft complete';
 		const team = TEAM_NAMES[turn.team];
 		if (turn.type === 'ban') {
-			return canAct ? 'Your team bans' : `${team} ban`;
+			if (canAct) return me?.team === turn.team ? 'Your team bans' : `Ban for ${team}`;
+			return `${team} ban`;
 		}
 		if (proxy) return `Pick for ${picker?.name}`;
 		if (canAct) return 'Your pick';
@@ -158,11 +168,18 @@
 		if (room.phase === 'flip') return 'Deciding which team picks first';
 		if (!turn) return '';
 		if (turn.type === 'ban') {
-			if (!me?.team) return 'You are spectating';
-			return canAct ? 'Choose a hero to ban' : 'Waiting for the other team';
+			if (canAct)
+				return me?.team === turn.team
+					? 'Choose a hero to ban'
+					: `${TEAM_NAMES[turn.team]} are all fake players. As host you ban for them.`;
+			return me?.team ? 'Waiting for the other team' : 'You are spectating';
 		}
 		if (picker?.id === room.you) return 'Choose your hero below';
-		if (proxy) return `${picker?.name} is offline. As host you can pick for them.`;
+		if (proxy)
+			return picker?.fake
+				? `${picker.name} is a fake player. As host you pick for them.`
+				: `${picker?.name} is offline. As host you can pick for them.`;
+		if (picker?.fake) return `${picker.name} is a fake player. The host picks for them.`;
 		if (picker && !picker.online) return `${picker.name} is offline. The host can pick for them.`;
 		if (!me?.team) return 'You are spectating';
 		return canSelect
@@ -252,7 +269,7 @@
 			? 'flex-row-reverse border-r-4 text-right'
 			: 'border-l-4'} {picking
 			? `animate-glow ring-2 ${mine ? teamRing(team) : 'ring-paper'}`
-			: ''} {p.online || mine ? '' : 'opacity-50'}"
+			: ''} {p.online || p.fake || mine ? '' : 'opacity-50'}"
 		style:--glow-color={mine ? teamColor(team) : null}
 	>
 		<div
@@ -270,6 +287,7 @@
 			<div class="truncate font-display text-lg leading-tight font-bold tracking-wide uppercase sm:text-xl">
 				{p.name}
 				{#if p.id === room.you}<span class="font-semibold text-paper/50">(you)</span>{/if}
+				{#if p.fake}<span class="font-semibold text-paper/50">(fake)</span>{/if}
 			</div>
 			<div class="truncate text-xs text-paper/60">
 				<span class="font-semibold {style.text}">{lane.name}</span>
@@ -281,7 +299,7 @@
 					)}
 					{#if pending}{pending.name}?{/if}
 				{:else}
-					{hero ? hero.name : p.online ? 'no hero yet' : 'offline'}
+					{hero ? hero.name : p.online || p.fake ? 'no hero yet' : 'offline'}
 				{/if}
 			</div>
 		</div>

@@ -66,6 +66,7 @@
 			<div class="truncate text-sm text-paper/70">
 				{p.name}
 				{#if p.id === room.you}<span class="text-paper/50">(you)</span>{/if}
+				{#if p.fake}<span class="text-paper/50">(fake)</span>{/if}
 			</div>
 		</div>
 	</div>

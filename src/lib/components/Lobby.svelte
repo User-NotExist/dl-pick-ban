@@ -73,6 +73,18 @@
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
 
+	// Fake players: the host names one, it appears under Spectators and is seated like anyone else.
+	let addingFake = $state(false);
+	let fakeName = $state('');
+	function addFake(e: SubmitEvent) {
+		e.preventDefault();
+		const name = fakeName.trim();
+		if (!name) return;
+		client.send({ type: 'addFake', name });
+		fakeName = '';
+		addingFake = false;
+	}
+
 	let copied = $state(false);
 	async function copyLink() {
 		try {
@@ -124,7 +136,14 @@
 	{#if p.id === room.hostId}
 		<span class="rounded border border-line px-1 text-[10px] text-paper/70">host</span>
 	{/if}
-	{#if !p.online}<span class="text-[10px] text-paper/60">offline</span>{/if}
+	{#if p.fake}
+		<span
+			class="rounded border border-line px-1 text-[10px] text-paper/70"
+			title="Fake player: the host bans and picks for them">fake</span
+		>
+	{:else if !p.online}
+		<span class="text-[10px] text-paper/60">offline</span>
+	{/if}
 	{#if p.id === room.you && p.team}
 		<button
 			onclick={() => client.send({ type: 'setTeam', team: null })}
@@ -162,7 +181,8 @@
 	{@const p = players.find((x) => x.slot === slot)}
 	{#if p}
 		<div
-			class="flex h-11 min-w-0 animate-pop items-center gap-1 rounded border-l-4 bg-ink/60 px-2 {style.border} {p.online
+			class="flex h-11 min-w-0 animate-pop items-center gap-1 rounded border-l-4 bg-ink/60 px-2 {style.border} {p.online ||
+			p.fake
 				? ''
 				: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''} {dropTarget ===
 			`${team}${slot}`
@@ -273,7 +293,8 @@
 			<ul class="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3">
 				{#each spectators as p (p.id)}
 					<li
-						class="flex items-center gap-1 rounded bg-ink/60 px-3 py-2 {p.online
+						class="flex items-center gap-1 rounded bg-ink/60 px-3 py-2 {p.online ||
+						p.fake
 							? ''
 							: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''}"
 					>
@@ -297,6 +318,36 @@
 			>
 				Shuffle teams
 			</button>
+			{#if addingFake}
+				<form onsubmit={addFake} class="flex items-center gap-2">
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						bind:value={fakeName}
+						maxlength="20"
+						required
+						autofocus
+						autocomplete="off"
+						aria-label="Fake player name"
+						placeholder="Fake player name"
+						onkeydown={(e) => {
+							if (e.key === 'Escape') addingFake = false;
+						}}
+						class="w-44 rounded border border-line bg-ink px-2 py-1.5 text-sm outline-none focus:border-paper/60"
+					/>
+					<button class="btn btn-ghost btn-sm" disabled={!fakeName.trim()}>Add</button>
+					<button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingFake = false)}>
+						Cancel
+					</button>
+				</form>
+			{:else}
+				<button
+					onclick={() => (addingFake = true)}
+					title="Adds a stand-in for someone who is not in the room. You ban and pick for them."
+					class="btn btn-ghost"
+				>
+					Add fake player
+				</button>
+			{/if}
 			<button
 				onclick={() => client.send({ type: 'start' })}
 				disabled={!!blocker}
@@ -335,6 +386,8 @@
 				<button class="underline" onclick={() => (picked = null)}>Cancel</button>
 			{:else}
 				As host you can drag players between slots, or click a player and then a destination.
+				Fake players stand in for people who are not here: you pick for them, and ban for a team
+				made up only of fake players.
 			{/if}
 		</p>
 	{/if}

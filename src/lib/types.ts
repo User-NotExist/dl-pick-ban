@@ -10,6 +10,8 @@ export interface Player {
 	slot: number | null;
 	hero: string | null;
 	online: boolean;
+	/** created and controlled by the host, standing in for someone who is not in the room */
+	fake: boolean;
 }
 
 export interface Ban {
@@ -83,7 +85,9 @@ export type Action =
 	/** host only, in the lobby: set the time limit per turn (one of TURN_TIME_OPTIONS) */
 	| { type: 'setTimer'; seconds: number }
 	| { type: 'reset' }
-	| { type: 'kick'; id: string };
+	| { type: 'kick'; id: string }
+	/** host only, in the lobby: add a fake player (as a spectator) that the host acts for */
+	| { type: 'addFake'; name: string };
 
 export const TEAM_SIZE = 6;
 export const BANS_PER_TEAM = 2;

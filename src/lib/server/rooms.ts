@@ -22,6 +22,8 @@ const MAX_PLAYERS = 12;
 /** players plus spectators */
 const MAX_IN_ROOM = 30;
 const MAX_ROOMS = 2000;
+/** fake players the host may add to one room */
+const MAX_FAKES = 12;
 /** open tabs (event streams) one member may have in a room */
 const MAX_CONNECTIONS_PER_MEMBER = 5;
 const EMPTY_ROOM_TTL = 30 * 60 * 1000;
@@ -176,13 +178,15 @@ export function snapshot(room: Room, you: string): RoomState {
 		code: room.code,
 		phase: room.phase,
 		hostId: room.hostId,
-		players: room.members.map(({ id, name, team, slot, hero, connections }) => ({
+		players: room.members.map(({ id, name, team, slot, hero, connections, fake }) => ({
 			id,
 			name,
 			team,
 			slot,
 			hero,
-			online: connections > 0
+			// a fake player never connects, which is what lets the host act for them
+			online: connections > 0,
+			fake
 		})),
 		bans: room.bans,
 		turn,
@@ -202,7 +206,7 @@ export function broadcast(room: Room) {
 }
 
 export function isMember(room: Room, token: string): boolean {
-	return room.members.some((m) => m.token === token);
+	return room.members.some((m) => !m.fake && m.token === token);
 }
 
 /** Find the member for this token, creating a seat (unassigned) if new. */
@@ -218,7 +222,7 @@ export function join(room: Room, token: string, name: string): Member {
 			);
 		room.kicked.delete(token);
 	}
-	let m = room.members.find((x) => x.token === token);
+	let m = room.members.find((x) => !x.fake && x.token === token);
 	if (m) {
 		if (m.connections >= MAX_CONNECTIONS_PER_MEMBER)
 			throw new RoomError('You have this room open in too many tabs');
@@ -232,6 +236,7 @@ export function join(room: Room, token: string, name: string): Member {
 			team: null,
 			slot: null,
 			hero: null,
+			fake: false,
 			connections: 0,
 			selection: null,
 			selectedAt: 0,
@@ -270,6 +275,8 @@ function removeMember(room: Room, m: Member) {
 function scheduleDrop(room: Room, m: Member) {
 	if (m.dropTimer) clearTimeout(m.dropTimer);
 	m.dropTimer = null;
+	// a fake player is never online and stays until the host removes them
+	if (m.fake) return;
 	if (m.connections > 0 || m.team !== null || !room.members.includes(m)) return;
 	m.dropTimer = setTimeout(() => {
 		m.dropTimer = null;
@@ -425,6 +432,16 @@ function requirePicker(room: Room, me: Member): Member {
 	return picker;
 }
 
+/**
+ * Whether `m` may ban for `team`: its own members, and the host when the whole team is fake
+ * players (a team with a real player on it bans for itself).
+ */
+function bansFor(room: Room, m: Member, team: Team): boolean {
+	if (m.team === team) return true;
+	const players = teamOf(room, team);
+	return room.hostId === m.id && players.length > 0 && players.every((p) => p.fake);
+}
+
 /** A selected hero that is still up for grabs, or null (also for the random card). */
 const validSelection = (room: Room, m: Member | undefined) =>
 	m?.selection && m.selection !== RANDOM_HERO && !heroTaken(room, m.selection)
@@ -439,9 +456,10 @@ function timeOut(room: Room) {
 	const turn = currentTurn(room);
 	if (!turn) return;
 	if (turn.type === 'ban') {
-		// every teammate's selection counts in a ban: the most recent one wins
+		// every teammate's selection counts in a ban (and the host's, for a team of fake
+		// players): the most recent one wins
 		const latest = room.members
-			.filter((m) => m.team === turn.team && validSelection(room, m))
+			.filter((m) => bansFor(room, m, turn.team) && validSelection(room, m))
 			.sort((a, b) => b.selectedAt - a.selectedAt)[0];
 		applyBan(room, turn.team, validSelection(room, latest));
 		return;
@@ -491,7 +509,7 @@ function requireHero(room: Room, hero: unknown): string {
 }
 
 export function act(room: Room, token: string, action: Action) {
-	const me = room.members.find((m) => m.token === token);
+	const me = room.members.find((m) => !m.fake && m.token === token);
 	if (!me) throw new RoomError('You are not in this room');
 
 	switch (action.type) {
@@ -582,7 +600,9 @@ export function act(room: Room, token: string, action: Action) {
 			const picker =
 				turn.type === 'pick' ? room.members.find((m) => m.id === turn.playerId) : undefined;
 			const proxy = !!picker && room.hostId === me.id && picker.connections === 0;
-			if (me.team !== turn.team && !proxy) throw new RoomError("It is not your team's turn");
+			const allowed =
+				turn.type === 'ban' ? bansFor(room, me, turn.team) : me.team === turn.team || proxy;
+			if (!allowed) throw new RoomError("It is not your team's turn");
 			// the random card can be marked like a hero, but only bans name a hero outright
 			me.selection =
 				action.hero === null || (action.hero === RANDOM_HERO && turn.type === 'pick')
@@ -594,7 +614,7 @@ export function act(room: Room, token: string, action: Action) {
 		case 'ban': {
 			const turn = currentTurn(room);
 			if (turn?.type !== 'ban') throw new RoomError('Not in the ban phase');
-			if (me.team !== turn.team) throw new RoomError("It is not your team's turn");
+			if (!bansFor(room, me, turn.team)) throw new RoomError("It is not your team's turn");
 			applyBan(room, turn.team, requireHero(room, action.hero));
 			break;
 		}
@@ -640,13 +660,38 @@ export function act(room: Room, token: string, action: Action) {
 			removeMember(room, target);
 			const now = Date.now();
 			for (const [t, until] of room.kicked) if (until <= now) room.kicked.delete(t);
-			room.kicked.set(target.token, now + KICK_COOLDOWN);
+			if (!target.fake) room.kicked.set(target.token, now + KICK_COOLDOWN);
 			for (const [listener, id] of [...room.listeners]) {
 				if (id === target.id) {
 					room.listeners.delete(listener);
 					listener('kicked', null);
 				}
 			}
+			break;
+		}
+		case 'addFake': {
+			requireHost(room, me);
+			if (room.phase !== 'lobby')
+				throw new RoomError('Fake players can only be added in the lobby');
+			const name = cleanName(action.name);
+			if (room.members.length >= MAX_IN_ROOM) throw new RoomError('Room is full');
+			if (room.members.filter((m) => m.fake).length >= MAX_FAKES)
+				throw new RoomError(`A room can have at most ${MAX_FAKES} fake players`);
+			room.members.push({
+				id: randomId(),
+				// never handed out, so no request can act as this member; only the host acts for it
+				token: crypto.randomUUID(),
+				name,
+				team: null,
+				slot: null,
+				hero: null,
+				fake: true,
+				connections: 0,
+				selection: null,
+				selectedAt: 0,
+				late: false,
+				dropTimer: null
+			});
 			break;
 		}
 		default:

@@ -66,6 +66,8 @@ export interface RoomState {
 	 * is running. Sent as a duration so clients do not depend on their clock matching the server's.
 	 */
 	turnEndsIn: number | null;
+	/** secret for the stream page's link; sent to the host only, null for everyone else */
+	streamKey: string | null;
 	/** id of the player receiving this snapshot */
 	you: string;
 }

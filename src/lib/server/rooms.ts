@@ -26,6 +26,10 @@ const MAX_ROOMS = 2000;
 const MAX_FAKES = 12;
 /** open tabs (event streams) one member may have in a room */
 const MAX_CONNECTIONS_PER_MEMBER = 5;
+/** stream pages attached to one room */
+const MAX_OBSERVERS = 5;
+/** the `you` of a snapshot made for a stream page, which is not a member of the room */
+const OBSERVER = '';
 const EMPTY_ROOM_TTL = 30 * 60 * 1000;
 /** a room nobody has entered yet is dropped much sooner */
 const NEW_ROOM_TTL = 5 * 60 * 1000;
@@ -72,6 +76,10 @@ export interface Room {
 	/** when the current turn times out (epoch ms), or null when no clock is running */
 	turnDeadline: number | null;
 	listeners: Map<Listener, string>;
+	/** secret in the stream page's link; only the host is told it */
+	streamKey: string;
+	/** stream pages: they receive every snapshot but are not members and do not keep the room alive */
+	observers: Set<Listener>;
 	expiry: Timer | null;
 	/** runs while the host is disconnected; when it fires the host role moves on */
 	hostTimer: Timer | null;
@@ -126,6 +134,8 @@ export function createRoom(): Room {
 		last: null,
 		seq: 0,
 		listeners: new Map(),
+		streamKey: crypto.randomUUID().replaceAll('-', ''),
+		observers: new Set(),
 		expiry: null,
 		hostTimer: null,
 		kicked: new Map()
@@ -148,6 +158,8 @@ function scheduleExpiry(room: Room, ttl = EMPTY_ROOM_TTL) {
 		if (room.turnTimer) clearTimeout(room.turnTimer);
 		if (room.hostTimer) clearTimeout(room.hostTimer);
 		for (const m of room.members) if (m.dropTimer) clearTimeout(m.dropTimer);
+		for (const listener of [...room.observers]) listener('kicked', null);
+		room.observers.clear();
 	}, ttl);
 	unref(room.expiry);
 }
@@ -166,10 +178,11 @@ export function snapshot(room: Room, you: string): RoomState {
 	const viewer = room.members.find((m) => m.id === you);
 	// the opposing team must not see what is being considered, and neither must a spectator who
 	// turned up mid-draft (otherwise a player could just open the room a second time)
+	// The stream page sees everything: its link is a secret only the host has.
 	const seesAll =
 		!!turn &&
-		!!viewer &&
-		(viewer.team === turn.team || (viewer.team === null && !viewer.late));
+		(you === OBSERVER ||
+			(!!viewer && (viewer.team === turn.team || (viewer.team === null && !viewer.late))));
 	const selections = room.members
 		.filter((m) => m.selection && (seesAll || m.id === you))
 		.sort((a, b) => a.selectedAt - b.selectedAt)
@@ -197,12 +210,28 @@ export function snapshot(room: Room, you: string): RoomState {
 		selections,
 		turnSeconds: room.turnSeconds,
 		turnEndsIn: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now()),
+		streamKey: you !== OBSERVER && you === room.hostId ? room.streamKey : null,
 		you
 	};
 }
 
 export function broadcast(room: Room) {
 	for (const [listener, id] of room.listeners) listener('state', snapshot(room, id));
+	if (room.observers.size) {
+		const state = snapshot(room, OBSERVER);
+		for (const listener of room.observers) listener('state', state);
+	}
+}
+
+/** Attach a stream page: it is sent every snapshot, selections included, without joining the room. */
+export function observe(room: Room, key: string, listener: Listener): () => void {
+	if (key.length !== room.streamKey.length || key !== room.streamKey)
+		throw new RoomError('This stream link is not valid');
+	if (room.observers.size >= MAX_OBSERVERS)
+		throw new RoomError('This room has too many stream pages open');
+	room.observers.add(listener);
+	listener('state', snapshot(room, OBSERVER));
+	return () => room.observers.delete(listener);
 }
 
 export function isMember(room: Room, token: string): boolean {

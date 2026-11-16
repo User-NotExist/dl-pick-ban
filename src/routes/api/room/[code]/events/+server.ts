@@ -1,6 +1,14 @@
 import { findRoom } from '#lib/server/guard.ts';
 import { acquire, allow, clientKey } from '#lib/server/ratelimit.ts';
-import { cleanName, isMember, join, RoomError, subscribe } from '#lib/server/rooms.ts';
+import {
+	cleanName,
+	isMember,
+	join,
+	observe,
+	RoomError,
+	subscribe,
+	type Listener
+} from '#lib/server/rooms.ts';
 import type { RequestHandler } from './$types';
 
 /** open event streams per client, across all rooms */
@@ -27,16 +35,23 @@ export const GET: RequestHandler = ({ params, url, request, getClientAddress }) 
 	if (!allow('connect', client, 120, 60_000))
 		return rejected('Too many connections. Try again in a minute.');
 
+	// a stream page watches the room without joining it
+	const streamKey = url.searchParams.get('stream');
 	const token = url.searchParams.get('token') ?? '';
-	if (!isMember(room, token) && !allow('join', client, 30, 60_000))
+	if (streamKey === null && !isMember(room, token) && !allow('join', client, 30, 60_000))
 		return rejected('Too many joins from your network. Try again in a minute.');
 
 	const release = acquire(client, MAX_STREAMS);
 	if (!release) return rejected('Too many open connections from your network.');
 
-	let member;
+	let attach: (listener: Listener) => () => void;
 	try {
-		member = join(room, token, cleanName(url.searchParams.get('name')));
+		if (streamKey !== null) {
+			attach = (listener) => observe(room, streamKey, listener);
+		} else {
+			const member = join(room, token, cleanName(url.searchParams.get('name')));
+			attach = (listener) => subscribe(room, member, listener);
+		}
 	} catch (e) {
 		release();
 		if (e instanceof RoomError) return rejected(e.message);
@@ -55,10 +70,20 @@ export const GET: RequestHandler = ({ params, url, request, getClientAddress }) 
 					cleanup();
 				}
 			};
-			const unsubscribe = subscribe(room, member, (event, state) => {
-				send(`event: ${event}\ndata: ${JSON.stringify(state)}\n\n`);
-				if (event === 'kicked') cleanup();
-			});
+			let unsubscribe = () => {};
+			try {
+				unsubscribe = attach((event, state) => {
+					send(`event: ${event}\ndata: ${JSON.stringify(state)}\n\n`);
+					if (event === 'kicked') cleanup();
+				});
+			} catch (e) {
+				// a stream page with a wrong key, or one too many of them
+				release();
+				if (!(e instanceof RoomError)) throw e;
+				send(`event: rejected\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
+				controller.close();
+				return;
+			}
 			const heartbeat = setInterval(() => send(': ping\n\n'), 5_000);
 			cleanup = () => {
 				clearInterval(heartbeat);

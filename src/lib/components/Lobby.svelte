@@ -85,6 +85,7 @@
 		addingFake = false;
 	}
 
+	let showCode = $state(false);
 	let copied = $state(false);
 	async function copyLink() {
 		try {
@@ -92,7 +93,20 @@
 			copied = true;
 			setTimeout(() => (copied = false), 1500);
 		} catch {
-			// clipboard unavailable; the code is visible on screen
+			// clipboard unavailable; the code can be revealed on screen
+		}
+	}
+
+	let copiedStream = $state(false);
+	async function copyStreamLink() {
+		try {
+			await navigator.clipboard.writeText(
+				`${location.origin}/room/${room.code}/stream?key=${room.streamKey}`
+			);
+			copiedStream = true;
+			setTimeout(() => (copiedStream = false), 1500);
+		} catch {
+			// clipboard unavailable
 		}
 	}
 </script>
@@ -225,14 +239,32 @@
 <div class="flex animate-rise flex-col gap-6">
 	<div class="flex flex-wrap items-center gap-3">
 		<h1 class="heading text-4xl leading-none">
-			Room <span class="tracking-[0.2em] text-amber-team not-italic">{room.code}</span>
+			Room <span class="tracking-[0.2em] text-amber-team not-italic"
+				>{showCode ? room.code : '•'.repeat(room.code.length)}</span
+			>
 		</h1>
+		<button
+			onclick={() => (showCode = !showCode)}
+			aria-pressed={showCode}
+			class="btn btn-ghost btn-sm"
+		>
+			{showCode ? 'Hide code' : 'Show code'}
+		</button>
 		<button
 			onclick={copyLink}
 			class="btn btn-ghost btn-sm"
 		>
 			{copied ? 'Copied' : 'Copy invite link'}
 		</button>
+		{#if room.streamKey}
+			<button
+				onclick={copyStreamLink}
+				class="btn btn-ghost btn-sm"
+				title="A read-only, one-screen view for OBS. It shows both teams' selections: keep the link to yourself."
+			>
+				{copiedStream ? 'Copied' : 'Copy stream link'}
+			</button>
+		{/if}
 		<span class="text-sm text-paper/50">
 			{teamA.length + teamB.length} / 12 players · {spectators.length} spectating
 		</span>

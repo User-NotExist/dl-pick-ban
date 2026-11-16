@@ -15,10 +15,11 @@ export class RoomClient {
 	#token: string;
 	#errorTimer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(code: string, token: string, name: string) {
+	/** With `streamKey` the client only watches, as a stream page: it does not join the room. */
+	constructor(code: string, token: string, name: string, streamKey?: string) {
 		this.#code = code;
 		this.#token = token;
-		const params = new URLSearchParams({ token, name });
+		const params = new URLSearchParams(streamKey ? { stream: streamKey } : { token, name });
 		this.#source = new EventSource(`/api/room/${code}/events?${params}`);
 		this.#source.addEventListener('open', () => (this.connected = true));
 		this.#source.addEventListener('error', () => {

@@ -22,6 +22,14 @@
 		<h1 class="text-xl font-bold">You were removed from this room</h1>
 		<a href="/" class="mt-4 inline-block underline">Back to start</a>
 	</div>
+{:else if client.rejected}
+	<div class="mx-auto mt-10 max-w-sm text-center">
+		<h1 class="text-xl font-bold">{client.rejected}</h1>
+		<div class="mt-4 flex justify-center gap-4">
+			<button class="underline" onclick={() => location.reload()}>Try again</button>
+			<a href="/" class="underline">Back to start</a>
+		</div>
+	</div>
 {:else if client.state}
 	{#if !client.connected}
 		<p class="mb-3 rounded border border-line bg-panel px-3 py-2 text-sm text-paper/70">

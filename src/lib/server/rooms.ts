@@ -15,8 +15,19 @@ import {
 } from '../types';
 
 const MAX_PLAYERS = 12;
-const MAX_IN_ROOM = 100;
+/** players plus spectators */
+const MAX_IN_ROOM = 30;
+const MAX_ROOMS = 2000;
+/** open tabs (event streams) one member may have in a room */
+const MAX_CONNECTIONS_PER_MEMBER = 5;
 const EMPTY_ROOM_TTL = 30 * 60 * 1000;
+/** a room nobody has entered yet is dropped much sooner */
+const NEW_ROOM_TTL = 5 * 60 * 1000;
+/** how long the host may be disconnected before someone else takes over */
+const HOST_GRACE = 15 * 1000;
+/** how long an offline member without a seat is kept */
+const SPECTATOR_TTL = 30 * 1000;
+const KICK_COOLDOWN = 10 * 1000;
 const HEROES = new Set<string>(HERO_IDS);
 
 interface Member extends Omit<Player, 'online'> {
@@ -25,7 +36,12 @@ interface Member extends Omit<Player, 'online'> {
 	selection: string | null;
 	selectedAt: number;
 	connections: number;
+	/** joined while a draft was running: as a spectator, does not see unconfirmed selections */
+	late: boolean;
+	dropTimer: Timer | null;
 }
+
+type Timer = ReturnType<typeof setTimeout>;
 
 export type Listener = (event: 'state' | 'kicked', state: RoomState | null) => void;
 
@@ -41,9 +57,13 @@ export interface Room {
 	pickOrder: string[];
 	last: LastEvent | null;
 	seq: number;
-	flipTimer: ReturnType<typeof setTimeout> | null;
+	flipTimer: Timer | null;
 	listeners: Map<Listener, string>;
-	expiry: ReturnType<typeof setTimeout> | null;
+	expiry: Timer | null;
+	/** runs while the host is disconnected; when it fires the host role moves on */
+	hostTimer: Timer | null;
+	/** token -> time until which a kicked player may not rejoin */
+	kicked: Map<string, number>;
 }
 
 export class RoomError extends Error {}
@@ -55,10 +75,12 @@ const rooms = (g.__pickbanRooms ??= new Map<string, Room>());
 const other = (t: Team): Team => (t === 'A' ? 'B' : 'A');
 const randomId = () => crypto.randomUUID().replaceAll('-', '').slice(0, 12);
 
+const unref = (t: Timer) => (t as { unref?: () => void }).unref?.();
+
 function randomCode() {
 	const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 	let code = '';
-	for (let i = 0; i < 5; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+	for (const n of crypto.getRandomValues(new Uint32Array(5))) code += alphabet[n % alphabet.length];
 	return code;
 }
 
@@ -70,6 +92,9 @@ export function cleanName(name: unknown): string {
 }
 
 export function createRoom(): Room {
+	// also keeps the loop below short: the code space is never more than a sliver full
+	if (rooms.size >= MAX_ROOMS)
+		throw new RoomError('The server is busy. Try again in a few minutes.');
 	let code = randomCode();
 	while (rooms.has(code)) code = randomCode();
 	const room: Room = {
@@ -84,10 +109,12 @@ export function createRoom(): Room {
 		last: null,
 		seq: 0,
 		listeners: new Map(),
-		expiry: null
+		expiry: null,
+		hostTimer: null,
+		kicked: new Map()
 	};
 	rooms.set(code, room);
-	scheduleExpiry(room);
+	scheduleExpiry(room, NEW_ROOM_TTL);
 	return room;
 }
 
@@ -95,12 +122,16 @@ export function getRoom(code: string): Room | undefined {
 	return rooms.get(code.toUpperCase());
 }
 
-function scheduleExpiry(room: Room) {
+function scheduleExpiry(room: Room, ttl = EMPTY_ROOM_TTL) {
 	if (room.expiry) clearTimeout(room.expiry);
 	room.expiry = setTimeout(() => {
-		if (room.listeners.size === 0) rooms.delete(room.code);
-	}, EMPTY_ROOM_TTL);
-	(room.expiry as { unref?: () => void }).unref?.();
+		if (room.listeners.size > 0) return;
+		rooms.delete(room.code);
+		if (room.flipTimer) clearTimeout(room.flipTimer);
+		if (room.hostTimer) clearTimeout(room.hostTimer);
+		for (const m of room.members) if (m.dropTimer) clearTimeout(m.dropTimer);
+	}, ttl);
+	unref(room.expiry);
 }
 
 export function currentTurn(room: Room): Turn | null {
@@ -115,8 +146,12 @@ export function currentTurn(room: Room): Turn | null {
 export function snapshot(room: Room, you: string): RoomState {
 	const turn = currentTurn(room);
 	const viewer = room.members.find((m) => m.id === you);
-	// the opposing team must not see what is being considered
-	const seesAll = !!turn && !!viewer && (viewer.team === null || viewer.team === turn.team);
+	// the opposing team must not see what is being considered, and neither must a spectator who
+	// turned up mid-draft (otherwise a player could just open the room a second time)
+	const seesAll =
+		!!turn &&
+		!!viewer &&
+		(viewer.team === turn.team || (viewer.team === null && !viewer.late));
 	const selections = room.members
 		.filter((m) => m.selection && (seesAll || m.id === you))
 		.sort((a, b) => a.selectedAt - b.selectedAt)
@@ -148,11 +183,27 @@ export function broadcast(room: Room) {
 	for (const [listener, id] of room.listeners) listener('state', snapshot(room, id));
 }
 
+export function isMember(room: Room, token: string): boolean {
+	return room.members.some((m) => m.token === token);
+}
+
 /** Find the member for this token, creating a seat (unassigned) if new. */
 export function join(room: Room, token: string, name: string): Member {
-	if (typeof token !== 'string' || token.length < 8) throw new RoomError('Invalid session');
+	if (typeof token !== 'string' || token.length < 8 || token.length > 64)
+		throw new RoomError('Invalid session');
+	const until = room.kicked.get(token);
+	if (until) {
+		const wait = Math.ceil((until - Date.now()) / 1000);
+		if (wait > 0)
+			throw new RoomError(
+				`You were removed from this room. You can rejoin in ${wait} second${wait === 1 ? '' : 's'}.`
+			);
+		room.kicked.delete(token);
+	}
 	let m = room.members.find((x) => x.token === token);
 	if (m) {
+		if (m.connections >= MAX_CONNECTIONS_PER_MEMBER)
+			throw new RoomError('You have this room open in too many tabs');
 		m.name = name;
 	} else {
 		if (room.members.length >= MAX_IN_ROOM) throw new RoomError('Room is full');
@@ -165,7 +216,9 @@ export function join(room: Room, token: string, name: string): Member {
 			hero: null,
 			connections: 0,
 			selection: null,
-			selectedAt: 0
+			selectedAt: 0,
+			late: room.phase !== 'lobby',
+			dropTimer: null
 		};
 		room.members.push(m);
 	}
@@ -173,16 +226,59 @@ export function join(room: Room, token: string, name: string): Member {
 	return m;
 }
 
+const hostOnline = (room: Room) =>
+	room.members.some((m) => m.id === room.hostId && m.connections > 0);
+
+/** Give the host role to the first online member, if the host is not online. */
+function handOver(room: Room): boolean {
+	if (hostOnline(room)) return false;
+	const next = room.members.find((m) => m.connections > 0);
+	if (!next) return false;
+	room.hostId = next.id;
+	return true;
+}
+
+function removeMember(room: Room, m: Member) {
+	if (m.dropTimer) clearTimeout(m.dropTimer);
+	m.dropTimer = null;
+	room.members = room.members.filter((x) => x !== m);
+	if (room.hostId === m.id) {
+		room.hostId = '';
+		handOver(room);
+	}
+}
+
+/** An offline member without a seat is forgotten after a while, so rooms cannot be stuffed. */
+function scheduleDrop(room: Room, m: Member) {
+	if (m.dropTimer) clearTimeout(m.dropTimer);
+	m.dropTimer = null;
+	if (m.connections > 0 || m.team !== null || !room.members.includes(m)) return;
+	m.dropTimer = setTimeout(() => {
+		m.dropTimer = null;
+		if (m.connections > 0 || m.team !== null || !room.members.includes(m)) return;
+		removeMember(room, m);
+		broadcast(room);
+	}, SPECTATOR_TTL);
+	unref(m.dropTimer);
+}
+
 export function subscribe(room: Room, member: Member, listener: Listener): () => void {
 	room.listeners.set(listener, member.id);
 	member.connections++;
+	if (member.dropTimer) clearTimeout(member.dropTimer);
+	member.dropTimer = null;
 	if (room.expiry) {
 		clearTimeout(room.expiry);
 		room.expiry = null;
 	}
-	// if the host is away in the lobby, the newcomer takes over
-	const host = room.members.find((x) => x.id === room.hostId);
-	if (!host || host.connections === 0) room.hostId = member.id;
+	if (member.id === room.hostId) {
+		// the host is back within the grace period and keeps the role
+		if (room.hostTimer) clearTimeout(room.hostTimer);
+		room.hostTimer = null;
+	} else if (!room.hostTimer) {
+		// the grace period ran out while nobody was around to take over
+		handOver(room);
+	}
 	broadcast(room);
 
 	let done = false;
@@ -191,9 +287,17 @@ export function subscribe(room: Room, member: Member, listener: Listener): () =>
 		done = true;
 		room.listeners.delete(listener);
 		member.connections = Math.max(0, member.connections - 1);
-		if (member.connections === 0 && room.hostId === member.id) {
-			const next = room.members.find((x) => x.connections > 0);
-			if (next) room.hostId = next.id;
+		if (member.connections === 0) {
+			if (room.hostId === member.id) {
+				// a refresh or a network blip must not cost the host the role: wait before passing it on
+				if (room.hostTimer) clearTimeout(room.hostTimer);
+				room.hostTimer = setTimeout(() => {
+					room.hostTimer = null;
+					if (handOver(room)) broadcast(room);
+				}, HOST_GRACE);
+				unref(room.hostTimer);
+			}
+			scheduleDrop(room, member);
 		}
 		if (room.listeners.size === 0) scheduleExpiry(room);
 		broadcast(room);
@@ -255,7 +359,7 @@ function startFlip(room: Room) {
 		},
 		(FLIP_REVEAL_DELAY_S + FLIP_COIN_S) * 1000
 	);
-	(room.flipTimer as { unref?: () => void }).unref?.();
+	unref(room.flipTimer);
 }
 
 export function finishFlip(room: Room) {
@@ -290,6 +394,7 @@ export function act(room: Room, token: string, action: Action) {
 			if (!team) {
 				me.team = null;
 				me.slot = null;
+				scheduleDrop(room, me); // actions do not need an open connection
 				break;
 			}
 			const free = freeSlots(room, team, me);
@@ -316,6 +421,7 @@ export function act(room: Room, token: string, action: Action) {
 			if (team === null) {
 				target.team = null;
 				target.slot = null;
+				scheduleDrop(room, target);
 				break;
 			}
 			if (team !== 'A' && team !== 'B') throw new RoomError('Invalid team');
@@ -326,9 +432,11 @@ export function act(room: Room, token: string, action: Action) {
 			if (occupant && occupant !== target) {
 				occupant.team = target.team;
 				occupant.slot = target.slot;
+				scheduleDrop(room, occupant);
 			}
 			target.team = team;
 			target.slot = slot;
+			scheduleDrop(room, target); // seated now: cancels a pending removal
 			break;
 		}
 		case 'shuffle': {
@@ -340,6 +448,7 @@ export function act(room: Room, token: string, action: Action) {
 			shuffled(room.members.filter((m) => m.team)).forEach((m, i) => {
 				m.team = i >= MAX_PLAYERS ? null : i % 2 === 0 ? first : other(first);
 				m.slot = m.team ? (slots[m.team].pop() ?? null) : null;
+				scheduleDrop(room, m);
 			});
 			break;
 		}
@@ -412,7 +521,11 @@ export function act(room: Room, token: string, action: Action) {
 			room.last = null;
 			clearSelections(room);
 			room.bans = [];
-			for (const m of room.members) m.hero = null;
+			for (const m of room.members) {
+				m.hero = null;
+				// everyone present will have been here from the start of the next draft
+				m.late = false;
+			}
 			break;
 		}
 		case 'kick': {
@@ -420,7 +533,10 @@ export function act(room: Room, token: string, action: Action) {
 			if (room.phase !== 'lobby') throw new RoomError('Players can only be removed in the lobby');
 			const target = room.members.find((m) => m.id === action.id);
 			if (!target || target.id === me.id) throw new RoomError('Cannot remove that player');
-			room.members = room.members.filter((m) => m !== target);
+			removeMember(room, target);
+			const now = Date.now();
+			for (const [t, until] of room.kicked) if (until <= now) room.kicked.delete(t);
+			room.kicked.set(target.token, now + KICK_COOLDOWN);
 			for (const [listener, id] of [...room.listeners]) {
 				if (id === target.id) {
 					room.listeners.delete(listener);

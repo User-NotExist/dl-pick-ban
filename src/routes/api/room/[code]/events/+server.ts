@@ -1,16 +1,45 @@
-import { error } from '@sveltejs/kit';
-import { cleanName, getRoom, join, RoomError, subscribe } from '#lib/server/rooms.ts';
+import { findRoom } from '#lib/server/guard.ts';
+import { acquire, allow, clientKey } from '#lib/server/ratelimit.ts';
+import { cleanName, isMember, join, RoomError, subscribe } from '#lib/server/rooms.ts';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = ({ params, url, request }) => {
-	const room = getRoom(params.code);
-	if (!room) error(404, 'Room not found');
+/** open event streams per client, across all rooms */
+const MAX_STREAMS = 60;
+
+const HEADERS = {
+	'content-type': 'text/event-stream',
+	'cache-control': 'no-cache, no-transform',
+	'x-accel-buffering': 'no'
+};
+
+/**
+ * EventSource hides the status and body of a failed request, so a refusal is delivered as a
+ * one-off event on an otherwise normal stream. The client closes the stream when it sees it.
+ */
+const rejected = (message: string) =>
+	new Response(`event: rejected\ndata: ${JSON.stringify({ message })}\n\n`, { headers: HEADERS });
+
+export const GET: RequestHandler = ({ params, url, request, getClientAddress }) => {
+	const client = clientKey(getClientAddress);
+	const room = findRoom(params.code, client);
+
+	// each new stream triggers a broadcast to the room, so reconnect loops are limited too
+	if (!allow('connect', client, 120, 60_000))
+		return rejected('Too many connections. Try again in a minute.');
+
+	const token = url.searchParams.get('token') ?? '';
+	if (!isMember(room, token) && !allow('join', client, 30, 60_000))
+		return rejected('Too many joins from your network. Try again in a minute.');
+
+	const release = acquire(client, MAX_STREAMS);
+	if (!release) return rejected('Too many open connections from your network.');
 
 	let member;
 	try {
-		member = join(room, url.searchParams.get('token') ?? '', cleanName(url.searchParams.get('name')));
+		member = join(room, token, cleanName(url.searchParams.get('name')));
 	} catch (e) {
-		if (e instanceof RoomError) error(400, e.message);
+		release();
+		if (e instanceof RoomError) return rejected(e.message);
 		throw e;
 	}
 
@@ -34,6 +63,7 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 			cleanup = () => {
 				clearInterval(heartbeat);
 				unsubscribe();
+				release();
 				try {
 					controller.close();
 				} catch {
@@ -47,11 +77,5 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 		}
 	});
 
-	return new Response(stream, {
-		headers: {
-			'content-type': 'text/event-stream',
-			'cache-control': 'no-cache, no-transform',
-			'x-accel-buffering': 'no'
-		}
-	});
+	return new Response(stream, { headers: HEADERS });
 };

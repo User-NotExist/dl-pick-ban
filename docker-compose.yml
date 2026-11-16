@@ -7,8 +7,14 @@ services:
     ports:
       # host:container. Set APP_PORT to publish on a different host port.
       - '${APP_PORT:-3000}:3000'
-    # Behind a reverse proxy or on a public domain, uncomment and set the site's public URL:
-    # environment:
-    #   ORIGIN: https://dlpickban.user-notexist.com
+    environment:
+      # Rate limits are per client IP. Behind a reverse proxy the client's address is the last
+      # entry the proxy appends to X-Forwarded-For; raise XFF_DEPTH by one for every extra proxy
+      # in front of it (e.g. 2 for CDN -> nginx -> app). Without a proxy, remove both lines,
+      # otherwise the header is missing or forgeable and every client shares one limit.
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: 1
+      # On a public domain, uncomment and set the site's public URL:
+      # ORIGIN: https://dlpickban.user-notexist.com
     #
     # Rooms are kept in memory: run a single instance, and expect a restart to clear all rooms.

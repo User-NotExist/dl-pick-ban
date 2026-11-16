@@ -4,6 +4,8 @@ export class RoomClient {
 	state = $state<RoomState | null>(null);
 	connected = $state(false);
 	kicked = $state(false);
+	/** why the server refused the connection (room full, kick cooldown, rate limit); empty if it did not */
+	rejected = $state('');
 	error = $state('');
 
 	#source: EventSource;
@@ -17,7 +19,16 @@ export class RoomClient {
 		const params = new URLSearchParams({ token, name });
 		this.#source = new EventSource(`/api/room/${code}/events?${params}`);
 		this.#source.addEventListener('open', () => (this.connected = true));
-		this.#source.addEventListener('error', () => (this.connected = false));
+		this.#source.addEventListener('error', () => {
+			this.connected = false;
+			// CLOSED means the browser has given up (the room is gone, or we are rate limited)
+			if (this.#source.readyState === EventSource.CLOSED && !this.kicked && !this.rejected)
+				this.rejected = 'Could not connect to the room. It may have expired.';
+		});
+		this.#source.addEventListener('rejected', (e) => {
+			this.rejected = JSON.parse((e as MessageEvent).data).message;
+			this.close();
+		});
 		this.#source.addEventListener('state', (e) => {
 			this.connected = true;
 			this.state = JSON.parse((e as MessageEvent).data);

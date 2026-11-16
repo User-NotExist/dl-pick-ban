@@ -126,9 +126,10 @@
 	{@const pending = picking ? ghost : undefined}
 	{@const order = p && room ? room.pickOrder.indexOf(p.id) + 1 : 0}
 	<div
-		class="relative min-h-0 overflow-hidden border-b-4 bg-panel/90 {teamBorder(team)} {picking
-			? 'animate-glow outline-4 -outline-offset-4 outline-paper'
+		class="deco relative min-h-0 overflow-hidden border border-b-4 bg-panel/90 {teamBorder(team)} {picking
+			? 'animate-glow'
 			: ''} {p ? '' : 'opacity-40'}"
+		style:--deco-color={teamColor(team)}
 		style:--glow-color={teamColor(team)}
 	>
 		{#if hero}
@@ -161,9 +162,9 @@
 		{/if}
 		{#if picking && !hero}
 			<span
-				class="slant absolute top-3 px-4 font-display text-xl leading-tight font-bold tracking-wider text-ink uppercase {teamBg(
-					team
-				)} {team === 'B' ? 'right-2' : 'left-2'}">Picking</span
+				class="tag absolute top-3 px-4 text-xl leading-tight {teamBg(team)} {team === 'B'
+					? 'right-3'
+					: 'left-3'}">Picking</span
 			>
 		{/if}
 
@@ -182,7 +183,7 @@
 				>
 					{p.name}
 				</div>
-				<div class="heading truncate text-2xl leading-tight {teamText(team)}">
+				<div class="heading truncate text-xl leading-snug {teamText(team)}">
 					{#if hero}
 						{hero.name}
 					{:else if pending}
@@ -217,7 +218,7 @@
 					? 'flex-row-reverse'
 					: ''}"
 			>
-				<span class="size-3 rounded-full {style.bg}"></span>
+				<span class="size-3 rotate-45 {style.bg}"></span>
 				{lane.name}
 			</h3>
 			{#each { length: SLOTS_PER_LANE }, i}
@@ -229,7 +230,7 @@
 
 {#snippet banner(team: Team)}
 	<div
-		class="overflow-hidden border-t-4 transition {teamBorder(team)} {turn?.team === team
+		class="overflow-hidden border-t-2 transition {teamBorder(team)} {turn?.team === team
 			? 'animate-glow'
 			: turn
 				? 'opacity-70'
@@ -251,13 +252,15 @@
 				{@const pending =
 					turn?.type === 'ban' && turn.team === team && i === list.length ? ghost : undefined}
 				<div
-					class="relative flex h-[124px] w-[91px] items-center justify-center overflow-hidden border-2 bg-ink/60 {hero
-						? 'border-red-600'
-						: 'border-dashed border-line'}"
+					class="deco relative flex h-[124px] w-[91px] items-center justify-center overflow-hidden border bg-ink/60 {hero
+						? 'border-red-700'
+						: 'border-brass/40'}"
+					style:--deco-color={hero ? '#dc2626' : null}
 				>
 					{#if hero}
-						<img src={hero.banned} alt="" class="h-full w-full animate-pop object-cover" />
-						<span class="absolute inset-0 animate-wash bg-red-600/25"></span>
+						<img src={hero.banned} alt="" class="h-full w-full animate-wash object-cover grayscale" />
+						<span class="absolute inset-0 animate-wash bg-red-950/30"></span>
+						<span class="seal animate-stamp"></span>
 					{:else if pending}
 						<img src={pending.card} alt="" class="h-full w-full animate-pulse object-cover opacity-60" />
 					{:else if skipped}
@@ -273,10 +276,10 @@
 				</span>
 			{/each}
 			{#if turn?.type === 'ban' && turn.team === team}
-				<span class="slant w-fit px-3 font-display text-xl leading-tight font-bold tracking-wider text-ink uppercase {teamBg(team)}">Banning</span>
+				<span class="tag w-fit px-3 text-xl leading-tight {teamBg(team)}">Banning</span>
 			{/if}
 			{#if room?.firstPick === team && room.phase !== 'flip'}
-				<span class="slant w-fit px-3 font-display text-xl leading-tight font-bold tracking-wider text-ink uppercase {teamBg(team)}">First pick</span>
+				<span class="tag w-fit px-3 text-xl leading-tight {teamBg(team)}">First pick</span>
 			{/if}
 		</div>
 	</div>
@@ -296,7 +299,7 @@
 	>
 		{#if client.kicked || client.rejected}
 			<div class="flex h-full flex-col items-center justify-center gap-4 text-center">
-				<div class="heading text-6xl">Stream unavailable</div>
+				<div class="heading text-5xl">Stream unavailable</div>
 				<div class="text-2xl text-paper/60">
 					{client.rejected || 'The room has closed.'}
 				</div>
@@ -306,21 +309,23 @@
 				<header class="grid min-h-0 grid-cols-[470px_minmax(0,1fr)_470px] gap-5">
 					{@render banner('A')}
 					<div
-						class="relative flex min-w-0 flex-col items-center justify-center gap-2 overflow-hidden border-b-4 bg-panel/90 px-8 text-center transition-colors duration-300 {turn
+						class="corners relative flex min-w-0 flex-col items-center justify-center gap-3 overflow-hidden border-y-2 bg-panel/90 px-8 text-center transition-colors duration-300 {turn
 							? teamBorder(turn.team)
-							: 'border-line'}"
+							: 'border-brass/50'}"
 						style:--slide-from={turn?.team === 'B' ? '80px' : '-80px'}
 					>
 						{#key status}
-							<span class="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine bg-white/15"
+							<span class="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine bg-paper/10"
 							></span>
 						{/key}
-						<div class="font-display text-2xl leading-none font-semibold tracking-[0.35em] text-paper/60 uppercase">
-							{phaseLabel}
+						<div class="divider w-full max-w-2xl">
+							<span class="font-display text-2xl leading-none font-semibold tracking-[0.35em] text-paper/60 uppercase">
+								{phaseLabel}
+							</span>
 						</div>
 						{#key status}
 							<div
-								class="heading max-w-full animate-slide truncate px-2 text-[84px] leading-none {turn
+								class="heading max-w-full animate-slide truncate px-2 text-[56px] leading-tight {turn
 									? teamText(turn.team)
 									: ''}"
 							>
@@ -329,9 +334,11 @@
 						{/key}
 						{#if secondsLeft !== null && msLeft !== null}
 							<div class="flex w-full max-w-xl items-center gap-4" role="timer">
-								<div class="h-2.5 flex-1 overflow-hidden rounded-full bg-line/60">
+								<div
+									class="flex h-3 flex-1 justify-center bg-line/50 [mask-image:repeating-linear-gradient(90deg,#000_0_7px,transparent_7px_10px)]"
+								>
 									<div
-										class="h-full rounded-full transition-[width] duration-200 ease-linear {urgent
+										class="h-full transition-[width] duration-200 ease-linear {urgent
 											? 'bg-red-500'
 											: turn
 												? teamBg(turn.team)
@@ -340,7 +347,7 @@
 									></div>
 								</div>
 								<span
-									class="heading w-14 text-right text-5xl leading-none tabular-nums {urgent
+									class="w-14 text-right font-display text-5xl leading-none font-bold tabular-nums {urgent
 										? 'animate-pulse text-red-400'
 										: 'text-paper'}">{secondsLeft}</span
 								>
@@ -353,9 +360,9 @@
 				<div class="grid min-h-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-6">
 					{@render roster('A')}
 					<div class="flex flex-col items-center justify-center gap-3">
-						<span class="w-px flex-1 bg-line"></span>
-						<span class="heading text-4xl text-paper/50">vs</span>
-						<span class="w-px flex-1 bg-line"></span>
+						<span class="w-px flex-1 bg-brass/40"></span>
+						<span class="heading text-2xl text-brass">vs</span>
+						<span class="w-px flex-1 bg-brass/40"></span>
 					</div>
 					{@render roster('B')}
 				</div>

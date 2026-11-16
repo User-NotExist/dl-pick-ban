@@ -1,15 +1,20 @@
 @import 'tailwindcss';
 @import '@fontsource/barlow-condensed/600.css';
 @import '@fontsource/barlow-condensed/700.css';
-@import '@fontsource/barlow-condensed/700-italic.css';
-@import '@fontsource/barlow-condensed/800-italic.css';
+@import '@fontsource/young-serif/400.css';
 
 @theme {
 	--font-display: 'Barlow Condensed', 'Arial Narrow', ui-sans-serif, system-ui, sans-serif;
-	--color-ink: #12100e;
-	--color-panel: #1c1917;
-	--color-line: #3a332d;
-	--color-paper: #efe6d5;
+	/* headings: an upright flared serif, in the manner of the game's title face */
+	--font-title: 'Young Serif', Georgia, 'Times New Roman', serif;
+	--color-ink: #0c1613;
+	--color-panel: #15231e;
+	--color-line: #3b4638;
+	--color-paper: #efdebf;
+	/* engraved rules and frames */
+	--color-brass: #b89a5e;
+	/* the "active / selected" accent */
+	--color-soul: #7fe8d0;
 	--color-amber-team: #ffac11;
 	--color-sapphire-team: #5ec8ec;
 	--color-lane-yellow: #f4d21f;
@@ -25,8 +30,8 @@
 	--animate-flash: flash 0.7s ease-out 0.22s both;
 	--animate-slide: slide 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 	--animate-shine: shine 0.8s ease-out both;
-	--animate-slash: slash 0.3s ease-out both;
-	--animate-sweep: sweep 1.3s cubic-bezier(0.7, 0, 0.2, 1) both;
+	--animate-stamp: stamp 0.35s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+	--animate-curtain: curtain 1.3s cubic-bezier(0.7, 0, 0.2, 1) both;
 	--animate-title: title 1.3s ease both;
 	--animate-leave: leave 0.01s linear 2.4s forwards;
 	--animate-coin-stage: coin-stage 4.5s linear both;
@@ -96,39 +101,39 @@
 			transform: translateX(360%) skewX(-20deg);
 		}
 	}
-	@keyframes slash {
+	/* ban seal: comes down onto the card like an ink stamp */
+	@keyframes stamp {
 		from {
-			scale: 0 1;
+			opacity: 0;
+			scale: 2.2;
 		}
 	}
-	/* phase stinger bars */
-	@keyframes sweep {
-		0% {
-			transform: translateX(-125%) skewX(-16deg);
+	/* phase stinger: a curtain half closes from its own side, holds, and opens again */
+	@keyframes curtain {
+		0%,
+		100% {
+			transform: translateX(var(--from, -101%));
 		}
 		38%,
 		60% {
-			transform: translateX(0) skewX(-16deg);
-		}
-		100% {
-			transform: translateX(125%) skewX(-16deg);
+			transform: translateX(0);
 		}
 	}
 	@keyframes title {
 		0%,
-		28% {
+		30% {
 			opacity: 0;
-			letter-spacing: 0.6em;
+			transform: translateY(10px);
 		}
 		42%,
 		60% {
 			opacity: 1;
-			letter-spacing: 0.12em;
+			transform: none;
 		}
 		74%,
 		100% {
 			opacity: 0;
-			letter-spacing: 0.12em;
+			transform: none;
 		}
 	}
 	/* coin flip: stage fades in and out, the coin is tossed up and spins to the winner's face */
@@ -172,13 +177,16 @@
 			overflow: hidden;
 		}
 	}
+	/* a frame that lights up, rather than a neon pulse */
 	@keyframes glow {
 		0%,
 		100% {
-			box-shadow: 0 0 0 0 transparent;
+			box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow-color, var(--color-brass)) 45%, transparent);
 		}
 		50% {
-			box-shadow: 0 0 16px 2px var(--glow-color, var(--color-paper));
+			box-shadow:
+				0 0 0 2px var(--glow-color, var(--color-brass)),
+				0 0 14px 0 color-mix(in srgb, var(--glow-color, var(--color-brass)) 45%, transparent);
 		}
 	}
 }
@@ -194,33 +202,126 @@
 	}
 }
 
-/* slanted ends, the recurring broadcast-graphics shape */
-@utility slant {
-	clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+/* cut corners, the recurring art-deco plaque shape */
+@utility chamfer {
+	--cut: 6px;
+	clip-path: polygon(
+		var(--cut) 0,
+		calc(100% - var(--cut)) 0,
+		100% var(--cut),
+		100% calc(100% - var(--cut)),
+		calc(100% - var(--cut)) 100%,
+		var(--cut) 100%,
+		0 calc(100% - var(--cut)),
+		0 var(--cut)
+	);
+}
+
+/* engraved double frame: the element's own border plus an inner hairline drawn over its content */
+@utility deco {
+	position: relative;
+	&::after {
+		content: '';
+		position: absolute;
+		inset: 3px;
+		border: 1px solid color-mix(in srgb, var(--deco-color, var(--color-brass)) 45%, transparent);
+		pointer-events: none;
+	}
+}
+
+/* four corner brackets, set in from the edges; colour with --corner-color */
+@utility corners {
+	--c: var(--corner-color, var(--color-brass));
+	background-image:
+		linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)),
+		linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)),
+		linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)),
+		linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c));
+	background-repeat: no-repeat;
+	background-size:
+		20px 1px,
+		1px 20px,
+		20px 1px,
+		1px 20px,
+		20px 1px,
+		1px 20px,
+		20px 1px,
+		1px 20px;
+	background-position:
+		left 7px top 7px,
+		left 7px top 7px,
+		right 7px top 7px,
+		right 7px top 7px,
+		left 7px bottom 7px,
+		left 7px bottom 7px,
+		right 7px bottom 7px,
+		right 7px bottom 7px;
 }
 
 @layer components {
 	.btn {
-		@apply slant inline-flex items-center justify-center px-6 py-2 font-display text-lg leading-tight font-bold tracking-wider uppercase italic transition disabled:opacity-40;
+		@apply chamfer inline-flex items-center justify-center px-6 py-2 font-display text-lg leading-tight font-bold tracking-widest uppercase transition disabled:opacity-40;
 	}
 	.btn-primary {
 		@apply bg-paper text-ink hover:bg-white;
-	}
-	/* primary action on a team-coloured surface */
-	.btn-ink {
-		@apply bg-ink text-paper hover:bg-panel;
 	}
 	.btn-ghost {
 		@apply bg-line/70 text-paper hover:bg-line;
 	}
 	.btn-danger {
-		@apply bg-red-600 text-white hover:bg-red-500;
+		@apply bg-red-700 text-paper hover:bg-red-600;
 	}
 	.btn-sm {
 		@apply px-4 py-1 text-base;
 	}
 	.heading {
-		@apply font-display font-extrabold tracking-wide uppercase italic;
+		@apply font-title font-normal tracking-wide uppercase;
+	}
+	/* small plaque label: turn tags, "first pick", "banned" */
+	.tag {
+		@apply chamfer inline-block px-2.5 font-display font-bold tracking-widest whitespace-nowrap text-ink uppercase;
+		--cut: 4px;
+	}
+	/* ban seal: a red ring with a cross, stamped at an angle over a hero card */
+	.seal {
+		position: absolute;
+		inset: 0;
+		margin: auto;
+		width: 64%;
+		aspect-ratio: 1;
+		rotate: -14deg;
+		border-radius: 9999px;
+		border: 3px solid #dc2626;
+		background: rgb(69 10 10 / 0.45);
+		box-shadow: inset 0 0 0 2px rgb(69 10 10 / 0.6);
+		color: #dc2626;
+		pointer-events: none;
+	}
+	.seal::before,
+	.seal::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		margin: auto;
+		width: 68%;
+		height: 11%;
+		background: currentColor;
+		rotate: 45deg;
+	}
+	.seal::after {
+		rotate: -45deg;
+	}
+	/* rule – diamond – rule */
+	.divider {
+		@apply flex items-center gap-3 text-brass;
+	}
+	.divider::before,
+	.divider::after {
+		content: '';
+		height: 1px;
+		flex: 1;
+		background: currentColor;
+		opacity: 0.6;
 	}
 }
 
@@ -231,12 +332,13 @@ html {
 }
 
 body {
-	/* team colours bleeding in from each side over faint diagonal scan lines */
+	/* team colours bleeding in from the top corners, a vignette, and paper grain */
 	background:
-		radial-gradient(60% 50% at 0% 0%, color-mix(in srgb, var(--color-amber-team) 14%, transparent), transparent),
-		radial-gradient(60% 50% at 100% 0%, color-mix(in srgb, var(--color-sapphire-team) 14%, transparent), transparent),
-		repeating-linear-gradient(115deg, transparent 0 22px, rgb(255 255 255 / 0.018) 22px 24px);
-	background-attachment: fixed;
+		radial-gradient(60% 50% at 0% 0%, color-mix(in srgb, var(--color-amber-team) 12%, transparent), transparent),
+		radial-gradient(60% 50% at 100% 0%, color-mix(in srgb, var(--color-sapphire-team) 12%, transparent), transparent),
+		radial-gradient(120% 90% at 50% 40%, transparent 55%, rgb(0 0 0 / 0.55)),
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 0.8  0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-attachment: fixed, fixed, fixed, scroll;
 	min-height: 100dvh;
 	font-family: ui-sans-serif, system-ui, sans-serif;
 }

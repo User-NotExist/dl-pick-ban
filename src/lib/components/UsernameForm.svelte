@@ -22,7 +22,7 @@
 			required
 			autocomplete="nickname"
 			placeholder="Your name"
-			class="rounded border border-line bg-ink px-3 py-2 text-base outline-none focus:border-paper/60"
+			class="border border-brass/40 bg-ink px-3 py-2 text-base outline-none focus:border-paper"
 		/>
 	</label>
 	<button

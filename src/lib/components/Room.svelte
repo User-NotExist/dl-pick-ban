@@ -19,12 +19,12 @@
 
 {#if client.kicked}
 	<div class="mx-auto mt-10 max-w-sm text-center">
-		<h1 class="text-xl font-bold">You were removed from this room</h1>
+		<h1 class="heading text-2xl">You were removed from this room</h1>
 		<a href="/" class="mt-4 inline-block underline">Back to start</a>
 	</div>
 {:else if client.rejected}
 	<div class="mx-auto mt-10 max-w-sm text-center">
-		<h1 class="text-xl font-bold">{client.rejected}</h1>
+		<h1 class="heading text-2xl">{client.rejected}</h1>
 		<div class="mt-4 flex justify-center gap-4">
 			<button class="underline" onclick={() => location.reload()}>Try again</button>
 			<a href="/" class="underline">Back to start</a>

@@ -34,13 +34,14 @@
 		{#each room.bans.filter((b) => b.team === team && b.hero) as ban (ban.hero)}
 			{@const hero = HERO_BY_ID.get(ban.hero ?? '')}
 			<div
-				class="flex min-w-0 items-center gap-2 rounded bg-ink/60 {team === 'B'
+				class="flex min-w-0 items-center gap-2 border border-red-900/70 bg-ink/60 {team === 'B'
 					? 'flex-row-reverse pl-2'
 					: 'pr-2'}"
 			>
-				<div class="relative aspect-[14/19] w-9 overflow-hidden rounded">
-					<img src={hero?.banned} alt="" class="h-full w-full object-cover" />
-					<span class="absolute inset-0 bg-red-600/25"></span>
+				<div class="relative aspect-[14/19] w-9 overflow-hidden">
+					<img src={hero?.banned} alt="" class="h-full w-full object-cover grayscale" />
+					<span class="absolute inset-0 bg-red-950/30"></span>
+					<span class="seal border-2!"></span>
 				</div>
 				<span class="min-w-0 truncate text-sm text-red-300 line-through">{hero?.name}</span>
 			</div>
@@ -51,18 +52,19 @@
 {#snippet entry(p: Player, team: Team)}
 	{@const hero = p.hero ? HERO_BY_ID.get(p.hero) : undefined}
 	<div
-		class="flex animate-slide items-center gap-3 border-2 bg-ink/60 p-1.5 [animation-delay:var(--lane-delay)] {teamBorder(
+		class="deco flex animate-slide items-center gap-3 border bg-ink/60 p-2 [animation-delay:var(--lane-delay)] {teamBorder(
 			team
 		)} {team === 'B' ? 'flex-row-reverse text-right' : ''}"
 		style:--slide-from={team === 'B' ? '80px' : '-80px'}
+		style:--deco-color={team === 'A' ? 'var(--color-amber-team)' : 'var(--color-sapphire-team)'}
 	>
 		<img
 			src={hero?.card}
 			alt=""
-			class="aspect-[14/19] w-14 shrink-0 rounded object-cover sm:w-16"
+			class="aspect-[14/19] w-14 shrink-0 object-cover sm:w-16"
 		/>
 		<div class="min-w-0">
-			<div class="heading truncate text-2xl leading-none sm:text-3xl">{hero?.name}</div>
+			<div class="heading truncate text-lg leading-tight sm:text-2xl">{hero?.name}</div>
 			<div class="truncate text-sm text-paper/70">
 				{p.name}
 				{#if p.id === room.you}<span class="text-paper/50">(you)</span>{/if}
@@ -74,7 +76,7 @@
 
 <div class="flex animate-rise flex-col gap-4 [animation-delay:2.4s]">
 	<div class="flex flex-wrap items-center gap-3">
-		<h1 class="heading flex-1 text-4xl leading-none">Draft summary</h1>
+		<h1 class="heading flex-1 text-3xl leading-tight">Draft summary</h1>
 		{#if isHost}
 			<button
 				onclick={() => client.send({ type: 'reset' })}
@@ -89,7 +91,7 @@
 
 	<div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
 		<PatronBanner team="A" class="aspect-[3/1] sm:aspect-[4/1]" />
-		<span class="heading animate-pop text-4xl text-paper/60 [animation-delay:2.7s]">vs</span>
+		<span class="heading animate-pop text-2xl text-brass [animation-delay:2.7s]">vs</span>
 		<PatronBanner team="B" class="aspect-[3/1] sm:aspect-[4/1]" />
 		<div>{@render bans('A')}</div>
 		<span></span>
@@ -101,13 +103,13 @@
 		{@const a = lanePlayers('A', laneIndex)}
 		{@const b = lanePlayers('B', laneIndex)}
 		<section
-			class="animate-rise overflow-hidden border-l-4 bg-panel/90 {style.border}"
+			class="animate-rise overflow-hidden border-l-2 bg-panel/90 {style.border}"
 			style:animation-delay="{2.7 + laneIndex * 0.2}s"
 			style:--lane-delay="{2.85 + laneIndex * 0.2}s"
 			aria-label="{lane.name} lane"
 		>
 			<h2 class="flex items-center gap-2 px-3 pt-2 font-display text-xl leading-tight font-bold tracking-widest uppercase {style.text}">
-				<span class="h-2.5 w-2.5 rounded-full {style.bg}"></span>
+				<span class="size-2 rotate-45 {style.bg}"></span>
 				{lane.name} lane
 			</h2>
 			<div class="grid grid-cols-2 gap-3 p-3">
@@ -118,7 +120,7 @@
 							{@render entry(p, team)}
 						{:else}
 							<div
-								class="flex h-full min-h-12 items-center justify-center rounded border border-dashed border-line text-sm text-paper/40"
+								class="flex h-full min-h-12 items-center justify-center border border-dashed border-line text-sm text-paper/40"
 							>
 								No {TEAM_NAMES[team]} player
 							</div>

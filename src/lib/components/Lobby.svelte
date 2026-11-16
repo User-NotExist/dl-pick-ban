@@ -148,11 +148,11 @@
 
 {#snippet badges(p: Player)}
 	{#if p.id === room.hostId}
-		<span class="rounded border border-line px-1 text-[10px] text-paper/70">host</span>
+		<span class="border border-brass/50 px-1 text-[10px] text-brass">host</span>
 	{/if}
 	{#if p.fake}
 		<span
-			class="rounded border border-line px-1 text-[10px] text-paper/70"
+			class="border border-brass/50 px-1 text-[10px] text-brass"
 			title="Fake player: the host bans and picks for them">fake</span
 		>
 	{:else if !p.online}
@@ -195,10 +195,10 @@
 	{@const p = players.find((x) => x.slot === slot)}
 	{#if p}
 		<div
-			class="flex h-11 min-w-0 animate-pop items-center gap-1 rounded border-l-4 bg-ink/60 px-2 {style.border} {p.online ||
+			class="flex h-11 min-w-0 animate-pop items-center gap-1 border-l-2 bg-ink/60 px-2 {style.border} {p.online ||
 			p.fake
 				? ''
-				: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''} {dropTarget ===
+				: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-soul' : ''} {dropTarget ===
 			`${team}${slot}`
 				? 'bg-paper/20'
 				: ''}"
@@ -211,7 +211,7 @@
 		<button
 			onclick={() =>
 				moving ? moveTo(moving.id, team, slot) : client.send({ type: 'setTeam', team, slot })}
-			class="h-11 min-w-0 rounded border border-dashed px-2 text-sm text-paper/50 transition hover:bg-paper/5 hover:text-paper {style.border} {dropTarget ===
+			class="h-11 min-w-0 border border-dashed px-2 text-sm text-paper/50 transition hover:bg-paper/5 hover:text-paper {style.border} {dropTarget ===
 			`${team}${slot}`
 				? 'bg-paper/20 text-paper'
 				: ''}"
@@ -239,7 +239,7 @@
 <div class="flex animate-rise flex-col gap-6">
 	<div class="flex flex-wrap items-center gap-3">
 		<h1 class="heading text-4xl leading-none">
-			Room <span class="tracking-[0.2em] text-amber-team not-italic"
+			Room <span class="tracking-[0.2em] text-amber-team"
 				>{showCode ? room.code : '•'.repeat(room.code.length)}</span
 			>
 		</h1>
@@ -271,7 +271,7 @@
 	</div>
 
 	<!-- Top-down board: the Archmother at the top, the Hidden King at the bottom, lanes as columns. -->
-	<section class="flex flex-col overflow-hidden border-y-4 border-t-sapphire-team border-b-amber-team bg-panel/90">
+	<section class="flex flex-col overflow-hidden border-y-2 border-t-sapphire-team border-b-amber-team bg-panel/90">
 		{@render banner('B')}
 		<div class="flex flex-col gap-3 p-3 sm:p-4">
 			<div class="text-sm text-paper/50">{teamB.length}/{TEAM_SIZE} players</div>
@@ -280,10 +280,10 @@
 				{#each LANES as lane (lane.id)}
 					{@const style = LANE_STYLE[lane.id]}
 					<div class="flex min-w-0 items-center gap-1.5 font-display text-base leading-tight font-bold tracking-wider uppercase sm:text-lg {style.text}">
-						<span class="h-px min-w-0 flex-1 bg-line"></span>
-						<span class="h-2.5 w-2.5 shrink-0 rounded-full {style.bg}"></span>
+						<span class="h-px min-w-0 flex-1 bg-brass/40"></span>
+						<span class="size-2 shrink-0 rotate-45 {style.bg}"></span>
 						{lane.name}
-						<span class="h-px min-w-0 flex-1 bg-line"></span>
+						<span class="h-px min-w-0 flex-1 bg-brass/40"></span>
 					</div>
 				{/each}
 			</div>
@@ -296,7 +296,7 @@
 	<section
 		class="border bg-panel/90 p-4 transition-colors {dropTarget === 'spectators'
 			? 'border-paper bg-paper/10'
-			: 'border-line'}"
+			: 'border-brass/30'}"
 		{...isHost ? dropZone('spectators', null) : {}}
 	>
 		<div class="mb-2 flex items-center justify-between gap-3">
@@ -325,10 +325,10 @@
 			<ul class="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3">
 				{#each spectators as p (p.id)}
 					<li
-						class="flex items-center gap-1 rounded bg-ink/60 px-3 py-2 {p.online ||
+						class="flex items-center gap-1 bg-ink/60 px-3 py-2 {p.online ||
 						p.fake
 							? ''
-							: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-paper' : ''}"
+							: 'opacity-50'} {moving?.id === p.id ? 'ring-2 ring-soul' : ''}"
 					>
 						{@render nameTag(p, () => (picked = p.id))}
 						{@render badges(p)}
@@ -364,7 +364,7 @@
 						onkeydown={(e) => {
 							if (e.key === 'Escape') addingFake = false;
 						}}
-						class="w-44 rounded border border-line bg-ink px-2 py-1.5 text-sm outline-none focus:border-paper/60"
+						class="w-44 border border-brass/40 bg-ink px-2 py-1.5 text-sm outline-none focus:border-paper"
 					/>
 					<button class="btn btn-ghost btn-sm" disabled={!fakeName.trim()}>Add</button>
 					<button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingFake = false)}>
@@ -393,7 +393,7 @@
 					value={room.turnSeconds}
 					onchange={(e) =>
 						client.send({ type: 'setTimer', seconds: Number(e.currentTarget.value) })}
-					class="rounded border border-line bg-ink px-2 py-1.5 text-paper"
+					class="border border-brass/40 bg-ink px-2 py-1.5 text-paper"
 				>
 					{#each TURN_TIME_OPTIONS as s (s)}
 						<option value={s}>{s ? `${s} seconds` : 'No limit'}</option>

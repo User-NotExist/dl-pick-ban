@@ -18,7 +18,7 @@
 	With reduced motion the stage is shown without animating, already on the result.
 -->
 <div
-	class="pointer-events-none fixed inset-0 z-40 flex animate-coin-stage flex-col items-center justify-center gap-6 overflow-hidden bg-black/80 motion-reduce:[animation:none]"
+	class="pointer-events-none fixed inset-0 z-40 flex animate-coin-stage flex-col items-center justify-center gap-6 overflow-hidden bg-ink/90 motion-reduce:[animation:none]"
 	style:animation-delay="{start}s"
 	role="status"
 >
@@ -34,12 +34,12 @@
 				style:--coin-end={winner === 'A' ? '1800deg' : '1980deg'}
 			>
 				<div
-					class="absolute inset-0 flex items-center justify-center rounded-full border-8 border-[#b97a00] bg-amber-team shadow-[inset_0_0_30px_rgb(0_0_0/0.35)] [backface-visibility:hidden]"
+					class="absolute inset-0 flex items-center justify-center rounded-full border-8 border-double border-[#b97a00] bg-amber-team shadow-[inset_0_0_30px_rgb(0_0_0/0.35)] [backface-visibility:hidden]"
 				>
 					<img src={PATRON_ICON.A} alt="" class="size-[78%] object-contain" />
 				</div>
 				<div
-					class="absolute inset-0 flex [transform:rotateY(180deg)] items-center justify-center rounded-full border-8 border-[#234d78] bg-[#3874ae] shadow-[inset_0_0_30px_rgb(0_0_0/0.35)] [backface-visibility:hidden]"
+					class="absolute inset-0 flex [transform:rotateY(180deg)] items-center justify-center rounded-full border-8 border-double border-[#234d78] bg-[#3874ae] shadow-[inset_0_0_30px_rgb(0_0_0/0.35)] [backface-visibility:hidden]"
 				>
 					<img src={PATRON_ICON.B} alt="" class="size-[78%] object-contain" />
 				</div>
@@ -49,14 +49,14 @@
 
 	<div class="flex flex-col items-center gap-2 px-4 text-center">
 		<div
-			class="heading animate-pop text-5xl leading-none sm:text-7xl"
+			class="heading animate-pop text-4xl leading-tight sm:text-6xl"
 			style:color={teamColor}
 			style:animation-delay="{landed}s"
 		>
 			{TEAM_NAMES[winner]}
 		</div>
 		<div
-			class="slant animate-slide px-5 py-0.5 font-display text-xl font-extrabold tracking-[0.2em] text-ink uppercase italic sm:text-2xl"
+			class="tag animate-slide px-5 py-0.5 text-xl tracking-[0.2em] sm:text-2xl"
 			style:background-color={teamColor}
 			style:animation-delay="{landed + 0.15}s"
 		>

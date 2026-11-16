@@ -42,8 +42,9 @@
 
 <div class="mx-auto mt-10 flex max-w-sm flex-col gap-6">
 	<div>
-		<h1 class="heading text-5xl leading-none">Draft lobby</h1>
-		<p class="mt-1 text-sm text-paper/60">
+		<h1 class="heading text-4xl leading-tight">Draft lobby</h1>
+		<div class="divider mt-1"><span class="size-1.5 rotate-45 bg-brass"></span></div>
+		<p class="mt-2 text-sm text-paper/60">
 			Form two teams of up to 6, ban two heroes each, then take turns picking.
 		</p>
 	</div>
@@ -55,7 +56,7 @@
 			maxlength="20"
 			autocomplete="nickname"
 			placeholder="Your name"
-			class="rounded border border-line bg-panel px-3 py-2 text-base outline-none focus:border-paper/60"
+			class="border border-brass/40 bg-panel px-3 py-2 text-base outline-none focus:border-paper"
 		/>
 	</label>
 
@@ -68,7 +69,7 @@
 	</button>
 
 	<div class="flex items-center gap-3 text-xs text-paper/40">
-		<span class="h-px flex-1 bg-line"></span>or join one<span class="h-px flex-1 bg-line"></span>
+		<span class="h-px flex-1 bg-brass/40"></span>or join one<span class="h-px flex-1 bg-brass/40"></span>
 	</div>
 
 	<form onsubmit={joinRoom} class="flex gap-2">
@@ -77,7 +78,7 @@
 			maxlength="5"
 			placeholder="Room code"
 			aria-label="Room code"
-			class="min-w-0 flex-1 rounded border border-line bg-panel px-3 py-2 font-mono tracking-widest uppercase outline-none focus:border-paper/60"
+			class="min-w-0 flex-1 border border-brass/40 bg-panel px-3 py-2 font-mono tracking-widest uppercase outline-none focus:border-paper/60"
 		/>
 		<button
 			disabled={!ready || !code.trim()}

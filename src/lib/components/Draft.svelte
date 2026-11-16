@@ -206,17 +206,12 @@
 	const teamText = (t: Team) => (t === 'A' ? 'text-amber-team' : 'text-sapphire-team');
 	const teamBorder = (t: Team) => (t === 'A' ? 'border-amber-team' : 'border-sapphire-team');
 	const teamBg = (t: Team) => (t === 'A' ? 'bg-amber-team' : 'bg-sapphire-team');
-	const teamRing = (t: Team) => (t === 'A' ? 'ring-amber-team' : 'ring-sapphire-team');
 	const teamColor = (t: Team) =>
 		t === 'A' ? 'var(--color-amber-team)' : 'var(--color-sapphire-team)';
 </script>
 
 {#snippet turnTag(label: string, team: Team | null)}
-	<span
-		class="slant inline-block px-2 font-display text-xs font-bold tracking-wider whitespace-nowrap text-ink uppercase {team
-			? teamBg(team)
-			: 'bg-paper'}">{label}</span
-	>
+	<span class="tag text-xs {team ? teamBg(team) : 'bg-paper'}">{label}</span>
 {/snippet}
 
 {#snippet banSlots(team: Team)}
@@ -227,16 +222,20 @@
 			{@const skipped = !!bans[i] && !bans[i].hero}
 			{@const pending = turn?.type === 'ban' && turn.team === team && i === bans.length ? ghost : undefined}
 			<div
-				class="relative flex aspect-[14/19] w-12 items-center justify-center overflow-hidden rounded border border-dashed border-line bg-ink/60 text-xs text-paper/30 sm:w-14"
+				class="deco relative flex aspect-[14/19] w-10 items-center justify-center overflow-hidden border bg-ink/60 font-display text-xs tracking-widest text-paper/30 uppercase sm:w-14 {hero
+					? 'border-red-700'
+					: 'border-brass/40'}"
+				style:--deco-color={hero ? '#dc2626' : null}
 				title={hero ? `${hero.name} (banned)` : skipped ? 'Ban forfeited: time ran out' : 'Ban slot'}
 			>
 				{#if hero}
 					<img
 						src={hero.banned}
 						alt="{hero.name} banned"
-						class="h-full w-full animate-pop object-cover"
+						class="h-full w-full animate-wash object-cover grayscale"
 					/>
-					<span class="absolute inset-0 animate-wash bg-red-600/25"></span>
+					<span class="absolute inset-0 animate-wash bg-red-950/30"></span>
+					<span class="seal animate-stamp"></span>
 				{:else if pending}
 					<img
 						src={pending.card}
@@ -264,13 +263,15 @@
 	{@const mine = picking && canAct}
 	<!-- Team B is mirrored so both rosters face the hero pool, as on a broadcast overlay. -->
 	<li
-		class="flex h-14 items-center gap-2 overflow-hidden bg-panel/90 transition sm:h-16 {style.border} {team ===
+		class="flex h-14 items-center gap-2 overflow-hidden border bg-panel/90 transition sm:h-16 {team ===
 		'B'
-			? 'flex-row-reverse border-r-4 text-right'
-			: 'border-l-4'} {picking
-			? `animate-glow ring-2 ${mine ? teamRing(team) : 'ring-paper'}`
-			: ''} {p.online || p.fake || mine ? '' : 'opacity-50'}"
-		style:--glow-color={mine ? teamColor(team) : null}
+			? 'flex-row-reverse text-right'
+			: ''} {picking ? 'animate-glow border-transparent' : 'border-brass/25'} {p.online ||
+		p.fake ||
+		mine
+			? ''
+			: 'opacity-50'}"
+		style:--glow-color={mine ? teamColor(team) : 'var(--color-paper)'}
 	>
 		<div
 			class="flex aspect-[14/19] h-full shrink-0 items-center justify-center overflow-hidden bg-line/40 text-paper/30"
@@ -290,6 +291,7 @@
 				{#if p.fake}<span class="font-semibold text-paper/50">(fake)</span>{/if}
 			</div>
 			<div class="truncate text-xs text-paper/60">
+				<span class="mr-0.5 inline-block size-1.5 rotate-45 align-middle {style.bg}"></span>
 				<span class="font-semibold {style.text}">{lane.name}</span>
 				·
 				{#if picking && !hero}
@@ -312,14 +314,14 @@
 
 {#snippet teamHead(team: Team)}
 	<section
-		class="flex flex-col overflow-hidden border-t-4 bg-panel/90 transition {team === 'A'
+		class="flex flex-col overflow-hidden border-t-2 bg-panel/90 transition {team === 'A'
 			? '[grid-area:ha]'
 			: '[grid-area:hb]'} {teamBorder(team)} {turn?.team === team ? 'animate-glow' : 'opacity-80'}"
 		style:--glow-color={team === 'B' ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)'}
 	>
 		<PatronBanner {team} class="aspect-[3/1] lg:aspect-[5/2]" />
 		<div class="flex items-center justify-between gap-2 p-2 {team === 'B' ? 'flex-row-reverse' : ''}">
-			<div class="flex min-w-0 flex-col {team === 'B' ? 'items-end' : ''}">
+			<div class="flex min-w-0 flex-col gap-0.5 {team === 'B' ? 'items-end' : 'items-start'}">
 				<span class="font-display text-sm font-bold tracking-[0.25em] text-paper/50 uppercase"
 					>Bans</span
 				>
@@ -327,12 +329,8 @@
 					{@render turnTag(canAct ? 'Your ban' : 'Banning', canAct ? team : null)}
 				{/if}
 				{#if room.firstPick === team && room.phase !== 'flip'}
-					<span
-						class="slant px-2 font-display text-xs font-bold tracking-wider whitespace-nowrap text-ink uppercase {team ===
-						'A'
-							? 'bg-amber-team'
-							: 'bg-sapphire-team'}"
-						title="Won the coin flip: picks first and last">First pick</span
+					<span class="tag text-xs {teamBg(team)}" title="Won the coin flip: picks first and last"
+						>First pick</span
 					>
 				{/if}
 			</div>
@@ -364,84 +362,74 @@
 >
 	{@render teamHead('A')}
 
+	<!-- Title card: stays dark on every turn; the team on turn colours its rules, corners and title. -->
 	<div
-		class="sticky top-0 z-10 flex flex-col items-center justify-center gap-1 overflow-hidden border-b-4 px-4 py-3 text-center transition-colors duration-300 [grid-area:st] {turn
+		class="corners sticky top-0 z-10 flex flex-col items-center justify-center gap-1.5 overflow-hidden border-y-2 bg-panel/95 px-5 py-4 text-center backdrop-blur transition-colors duration-300 [grid-area:st] {turn
 			? teamBorder(turn.team)
-			: 'border-line'} {myTurn && turn
-			? `animate-glow text-ink ${teamBg(turn.team)}`
-			: 'bg-panel/95 backdrop-blur'} {suggesting && turn
-			? `ring-2 ring-inset ${teamRing(turn.team)}`
-			: ''}"
-		style:--glow-color={turn?.team === 'B' ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)'}
+			: 'border-brass/50'} {myTurn ? 'animate-glow' : ''}"
+		style:--glow-color={turn ? teamColor(turn.team) : null}
+		style:--corner-color={myTurn && turn ? teamColor(turn.team) : null}
 		style:--slide-from={turn?.team === 'B' ? '80px' : '-80px'}
 	>
 		{#key status}
 			<span
 				class="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine {myTurn
-					? 'bg-white/40'
-					: 'bg-white/15'}"
+					? 'bg-paper/20'
+					: 'bg-paper/10'}"
 			></span>
 		{/key}
 		{#if phaseLabel}
-			<div
-				class="font-display text-sm font-semibold tracking-[0.35em] uppercase {myTurn
-					? 'text-ink/70'
-					: 'text-paper/60'}"
-			>
-				{phaseLabel}
+			<div class="divider w-full max-w-md">
+				<span class="font-display text-sm font-semibold tracking-[0.35em] text-paper/60 uppercase">
+					{phaseLabel}
+				</span>
 			</div>
 		{/if}
 		{#key status}
 			<div
-				class="heading max-w-full animate-slide truncate leading-none {myTurn
-					? 'text-4xl text-ink sm:text-6xl'
-					: `text-3xl sm:text-5xl ${turn ? teamText(turn.team) : ''}`}"
+				class="heading max-w-full animate-slide truncate leading-tight {myTurn
+					? 'text-2xl sm:text-4xl xl:text-5xl'
+					: 'text-2xl sm:text-3xl xl:text-4xl'} {turn ? teamText(turn.team) : ''}"
 			>
 				{status}
 			</div>
 		{/key}
 		{#if secondsLeft !== null && msLeft !== null}
+			<!-- a ticked line that burns down from both ends towards the centre -->
 			<div
-				class="flex w-full max-w-xs items-center gap-2"
+				class="flex w-full max-w-xs items-center gap-3"
 				role="timer"
 				aria-label="{secondsLeft} seconds left"
 			>
-				<div class="h-1.5 flex-1 overflow-hidden rounded-full {myTurn ? 'bg-ink/25' : 'bg-line/60'}">
+				<div
+					class="flex h-2 flex-1 justify-center bg-line/50 [mask-image:repeating-linear-gradient(90deg,#000_0_5px,transparent_5px_7px)]"
+				>
 					<div
-						class="h-full rounded-full transition-[width] duration-200 ease-linear {urgent
-							? myTurn
-								? 'bg-red-700'
-								: 'bg-red-500'
-							: myTurn
-								? 'bg-ink'
-								: turn?.team === 'B'
-									? 'bg-sapphire-team'
-									: 'bg-amber-team'}"
+						class="h-full transition-[width] duration-200 ease-linear {urgent
+							? 'bg-red-500'
+							: turn?.team === 'B'
+								? 'bg-sapphire-team'
+								: 'bg-amber-team'}"
 						style:width="{(msLeft / (room.turnSeconds * 1000)) * 100}%"
 					></div>
 				</div>
 				<span
-					class="heading w-10 text-right text-2xl leading-none tabular-nums {urgent
-						? `animate-pulse ${myTurn ? 'text-red-800' : 'text-red-400'}`
-						: myTurn
-							? 'text-ink'
-							: 'text-paper'}">{secondsLeft}</span
+					class="w-9 text-right font-display text-3xl leading-none font-bold tabular-nums {urgent
+						? 'animate-pulse text-red-400'
+						: 'text-paper'}">{secondsLeft}</span
 				>
 			</div>
 		{/if}
 		{#if hint}
-			<div class="text-sm {myTurn ? 'font-semibold text-ink' : suggesting ? 'text-paper' : 'text-paper/50'}">
+			<div class="text-sm {myTurn || suggesting ? 'text-paper' : 'text-paper/50'}">
 				{hint}
 			</div>
 		{/if}
 		{#if secondsLeft !== null && timeoutNote}
-			<div class="text-xs {myTurn ? 'text-ink/70' : 'text-paper/50'}">{timeoutNote}</div>
+			<div class="text-xs text-paper/50">{timeoutNote}</div>
 		{/if}
 		{#if considering}
-			<div
-				class="max-w-full truncate text-sm font-semibold {myTurn ? 'text-ink/80' : 'text-paper/80'}"
-				aria-live="polite"
-			>
+			<div class="max-w-full truncate text-sm font-semibold text-paper/80" aria-live="polite">
 				{considering}
 			</div>
 		{/if}
@@ -451,7 +439,7 @@
 					<button
 						onclick={confirm}
 						disabled={!choice}
-						class="btn {turn.type === 'ban' ? 'btn-danger' : 'btn-ink'} px-8"
+						class="btn {turn.type === 'ban' ? 'btn-danger' : 'btn-primary'} px-8"
 					>
 						{#if choice}
 							{turn.type === 'ban' ? 'Ban' : 'Pick'}
@@ -493,28 +481,35 @@
 					onclick={() => select(hero.id)}
 					aria-pressed={mySelection === hero.id}
 					title={hero === RANDOM ? 'A random available hero, rolled when you lock it in' : hero.name}
-					class="group relative aspect-[14/19] overflow-hidden border-2 bg-panel transition duration-200
+					class="deco group relative aspect-[14/19] overflow-hidden border bg-panel transition duration-200
 						{mySelection === hero.id
-						? 'scale-105 border-paper'
+						? 'z-[1] scale-105 border-soul shadow-[0_0_14px_0_color-mix(in_srgb,var(--color-soul)_50%,transparent)]'
 						: isBanned
-							? 'border-red-600'
+							? 'border-red-900'
 							: owner?.team
 								? teamBorder(owner.team)
 								: heroMarks.length && turn
 									? `${teamBorder(turn.team)} ${leadMark ? '' : 'border-dashed'}`
-									: 'border-transparent'}
-						{leadMark ? 'animate-glow' : ''}
+									: 'border-brass/40'}
+						{leadMark && mySelection !== hero.id ? 'animate-glow' : ''}
 						{canSelect && available
-						? 'cursor-pointer hover:-translate-y-1 hover:border-paper/60 hover:shadow-lg'
+						? 'cursor-pointer hover:border-paper hover:brightness-115'
 						: 'cursor-default'}"
+					style:--deco-color={mySelection === hero.id
+						? 'var(--color-soul)'
+						: isBanned
+							? '#7f1d1d'
+							: owner?.team
+								? teamColor(owner.team)
+								: null}
 				>
 					<img
 						src={isBanned ? hero.banned : hero.card}
 						alt={hero.name}
 						loading="lazy"
-						class="h-full w-full object-cover transition-opacity duration-500 {owner
-							? 'opacity-35'
-							: ''} {!available ||
+						class="h-full w-full object-cover transition duration-500 {isBanned
+							? 'opacity-70 grayscale'
+							: ''} {owner ? 'opacity-35' : ''} {!available ||
 						canSelect ||
 						heroMarks.length ||
 						done
@@ -522,16 +517,11 @@
 							: 'opacity-80'}"
 					/>
 					{#if isBanned}
-						<span class="absolute inset-0 animate-wash bg-red-600/25"></span>
-						<span
-							class="absolute top-1/2 left-[-20%] h-1 w-[140%] -rotate-[52deg] animate-slash bg-red-500/90"
-						></span>
-						<span
-							class="absolute inset-x-0 top-0 animate-wash bg-red-700 py-0.5 text-center text-[10px] font-bold tracking-wider"
-							>BANNED</span
-						>
+						<!-- struck from the pool: drained of colour and stamped, like a closed case file -->
+						<span class="absolute inset-0 animate-wash bg-red-950/30"></span>
+						<span class="seal animate-stamp"></span>
 					{:else if owner?.team}
-						<span class="absolute inset-y-0 left-0 w-1/2 animate-shine bg-white/40"></span>
+						<span class="absolute inset-y-0 left-0 w-1/2 animate-shine bg-paper/40"></span>
 						<span
 							class="absolute inset-x-0 top-0 animate-wash truncate bg-ink/85 px-1 py-0.5 text-center text-[11px] font-semibold {teamText(
 								owner.team
@@ -541,19 +531,18 @@
 						<!-- pending selection: solid tag for the acting player(s), outlined for suggestions -->
 						<span
 							class="absolute inset-x-0 top-0 animate-wash truncate px-1 py-0.5 text-center text-[11px] font-bold {leadMark
-								? turn.team === 'A'
-									? 'bg-amber-team text-ink'
-									: 'bg-sapphire-team text-ink'
-								: `bg-ink/85 italic ${teamText(turn.team)}`}"
+								? `${teamBg(turn.team)} text-ink`
+								: `bg-ink/85 ${teamText(turn.team)}`}"
 							>{heroMarks.map(who).join(', ')}{leadMark ? '' : '?'}</span
 						>
 					{/if}
+					<!-- name plaque -->
 					<span
-						class="absolute inset-x-0 bottom-0 truncate bg-ink/80 px-1 py-0.5 text-center font-display text-sm leading-tight font-semibold tracking-wide uppercase {isBanned
-							? 'text-red-300 line-through'
+						class="chamfer absolute inset-x-1.5 bottom-1.5 truncate px-1 py-0.5 text-center font-display text-sm leading-tight font-bold tracking-wide uppercase [--cut:4px] {isBanned
+							? 'bg-ink/90 text-red-300/80 line-through'
 							: owner
-								? 'text-paper/60'
-								: 'text-paper'}">{hero.name}</span
+								? 'bg-ink/85 text-paper/60'
+								: 'bg-paper/95 text-ink'}">{hero.name}</span
 					>
 				</button>
 			{/each}

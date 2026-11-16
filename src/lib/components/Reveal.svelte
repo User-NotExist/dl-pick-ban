@@ -13,7 +13,7 @@
 	const accent = $derived(ban ? '#dc2626' : teamColor);
 </script>
 
-<!-- Broadcast-style band: sweeps in from the acting team's side, holds, exits the other side. -->
+<!-- Headline band: sweeps in from the acting team's side, holds, exits the other side. -->
 <div
 	class="pointer-events-none fixed inset-0 z-40 overflow-hidden"
 	aria-hidden="true"
@@ -23,39 +23,44 @@
 >
 	<div class="absolute inset-0 animate-dim bg-black/65"></div>
 
-	<div class="absolute top-1/2 left-[-8%] h-40 w-[116%] -translate-y-1/2 animate-band sm:h-64">
+	<div class="absolute top-1/2 left-0 h-40 w-full -translate-y-1/2 animate-band sm:h-64">
 		<div
-			class="absolute inset-0 -skew-x-12 border-y-4 bg-ink"
+			class="absolute inset-0 border-y-2 bg-ink"
 			style:border-color={accent}
 			style:background-image="linear-gradient({right
 				? 'to left'
-				: 'to right'}, color-mix(in srgb, var(--accent) 60%, transparent), transparent 65%)"
-		></div>
-		<div class="absolute inset-0 -skew-x-12 animate-flash bg-white"></div>
+				: 'to right'}, color-mix(in srgb, var(--accent) 40%, transparent), transparent 65%)"
+		>
+			<div class="absolute inset-x-0 inset-y-1.5 border-y opacity-50" style:border-color={accent}></div>
+		</div>
+		<div class="absolute inset-0 animate-flash bg-paper"></div>
 
 		<div
-			class="relative mx-auto flex h-full max-w-5xl items-center gap-4 px-[11%] sm:gap-8 {right
+			class="relative mx-auto flex h-full max-w-5xl items-center gap-4 px-6 sm:gap-8 {right
 				? 'flex-row-reverse text-right'
 				: ''}"
 		>
 			<div
-				class="relative aspect-[14/19] h-[118%] shrink-0 animate-slide overflow-hidden border-x-4 shadow-2xl [animation-delay:0.18s]"
+				class="relative aspect-[14/19] deco h-[118%] shrink-0 animate-slide overflow-hidden border-2 bg-panel shadow-2xl [animation-delay:0.18s]"
 				style:border-color={accent}
+				style:--deco-color={accent}
 			>
 				{#if noBan}
 					<div
-						class="flex h-full w-full items-center justify-center bg-panel font-display text-7xl font-extrabold text-paper/30 sm:text-9xl"
+						class="heading flex h-full w-full items-center justify-center bg-panel text-7xl text-paper/30 sm:text-9xl"
 					>
 						—
 					</div>
 				{:else}
-					<img src={ban ? hero?.banned : hero?.card} alt="" class="h-full w-full object-cover" />
+					<img
+						src={ban ? hero?.banned : hero?.card}
+						alt=""
+						class="h-full w-full object-cover {ban ? 'grayscale' : ''}"
+					/>
 				{/if}
 				{#if ban && !noBan}
-					<span class="absolute inset-0 bg-red-600/25"></span>
-					<span
-						class="absolute top-1/2 left-[-20%] h-1.5 w-[140%] -rotate-[52deg] animate-slash bg-red-500 [animation-delay:0.5s]"
-					></span>
+					<span class="absolute inset-0 bg-red-950/30"></span>
+					<span class="seal animate-stamp [animation-delay:0.5s]"></span>
 				{/if}
 			</div>
 
@@ -66,13 +71,13 @@
 				>
 					{ban ? TEAM_NAMES[last.team] : `${last.player} · ${TEAM_NAMES[last.team]}`}
 				</div>
-				<div class="text-5xl leading-none font-display font-extrabold uppercase italic sm:text-8xl">
+				<div class="heading text-4xl leading-tight sm:text-7xl">
 					{noBan ? 'No ban' : hero?.name}
 				</div>
 				<div
-					class="mt-2 inline-block -skew-x-12 px-3 py-0.5 text-sm font-display font-extrabold italic tracking-[0.2em] uppercase sm:mt-3 sm:text-xl {ban
-						? 'text-white'
-						: 'text-ink'}"
+					class="tag mt-2 px-3 py-0.5 text-sm tracking-[0.2em] sm:mt-3 sm:text-xl {ban
+						? 'text-paper!'
+						: ''}"
 					style:background-color={accent}
 				>
 					{noBan ? 'Time ran out' : ban ? 'Banned' : 'Selected'}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '#lib/assets/favicon.svg';
+	import favicon from '#lib/assets/dedlok.png';
 	import logo from '#lib/assets/deadlock.png';
 	import type { LayoutProps } from './$types';
 

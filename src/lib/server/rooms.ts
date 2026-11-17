@@ -6,6 +6,7 @@ import {
 	FLIP_REVEAL_DELAY_S,
 	FORMATS,
 	RANDOM_HERO,
+	RANDOM_ROLL_S,
 	TEAM_SIZE,
 	TURN_GRACE_S,
 	TURN_TIME_OPTIONS,
@@ -489,15 +490,16 @@ function clearSelections(room: Room) {
 /** Record a ban; `hero` is null when the team ran out of time with nothing selected. */
 function applyBan(room: Room, team: Team, hero: string | null) {
 	room.bans.push({ team, hero });
-	room.last = { seq: ++room.seq, type: 'ban', team, hero, player: null };
+	room.last = { seq: ++room.seq, type: 'ban', team, hero, player: null, random: false };
 	clearSelections(room);
 	advance(room);
 }
 
-function applyPick(room: Room, picker: Member, hero: string) {
+/** `random`: the server rolled the hero, so clients play the roulette before the reveal */
+function applyPick(room: Room, picker: Member, hero: string, random = false) {
 	if (!picker.team) return;
 	picker.hero = hero;
-	room.last = { seq: ++room.seq, type: 'pick', team: picker.team, hero, player: picker.name };
+	room.last = { seq: ++room.seq, type: 'pick', team: picker.team, hero, player: picker.name, random };
 	clearSelections(room);
 	advance(room);
 }
@@ -551,7 +553,9 @@ function timeOut(room: Room) {
 	// while the picker is offline the host's selection stands in for theirs
 	const lead =
 		picker.connections > 0 ? picker : room.members.find((m) => m.id === room.hostId);
-	applyPick(room, picker, validSelection(room, lead) ?? randomHero(room));
+	const selected = validSelection(room, lead);
+	if (selected) applyPick(room, picker, selected);
+	else applyPick(room, picker, randomHero(room), true);
 }
 
 /** Start, restart or stop the turn clock so that it matches the turn now in progress. */
@@ -565,7 +569,8 @@ function syncTurnTimer(room: Room) {
 	room.turnTimer = null;
 	room.turnDeadline = null;
 	if (!key || room.turnSeconds <= 0) return;
-	const ms = (room.turnSeconds + TURN_GRACE_S) * 1000;
+	// a random pick plays its roulette before the reveal: the next turn waits for both
+	const ms = (room.turnSeconds + TURN_GRACE_S + (room.last?.random ? RANDOM_ROLL_S : 0)) * 1000;
 	room.turnDeadline = Date.now() + ms;
 	room.turnTimer = setTimeout(() => {
 		room.turnTimer = null;
@@ -708,11 +713,8 @@ export function act(room: Room, token: string, action: Action) {
 		}
 		case 'pick': {
 			const picker = requirePicker(room, me);
-			applyPick(
-				room,
-				picker,
-				action.hero === RANDOM_HERO ? randomHero(room) : requireHero(room, action.hero)
-			);
+			if (action.hero === RANDOM_HERO) applyPick(room, picker, randomHero(room), true);
+			else applyPick(room, picker, requireHero(room, action.hero));
 			break;
 		}
 		case 'setTimer': {

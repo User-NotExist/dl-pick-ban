@@ -45,6 +45,8 @@ export interface LastEvent {
 	hero: string | null;
 	/** name of the player who received the hero (picks only) */
 	player: string | null;
+	/** the server rolled the hero: the Random card was locked in, or a pick timed out with nothing selected */
+	random: boolean;
 }
 
 /** A hero a player has selected but not confirmed; `RANDOM_HERO` during picks for "surprise me". */
@@ -120,6 +122,8 @@ export const TURN_TIME_OPTIONS = [0, 20, 30, 45, 60, 90] as const;
 export const DEFAULT_TURN_SECONDS = 30;
 /** added to every turn so the reveal animation of the previous one does not eat into it */
 export const TURN_GRACE_S = 2;
+/** a random pick plays a roulette over the hero pool first: added to the next turn's grace */
+export const RANDOM_ROLL_S = 1.5;
 /**
  * Client timeline of the `flip` phase: wait for the last ban's reveal band (only when a ban
  * came before the flip), then the coin.

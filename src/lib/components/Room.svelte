@@ -2,7 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { identity } from '#lib/identity.svelte.ts';
 	import { RoomClient } from '#lib/room.svelte.ts';
-	import { FLIP_REVEAL_DELAY_S } from '#lib/types.ts';
+	import { FLIP_REVEAL_DELAY_S, RANDOM_ROLL_S } from '#lib/types.ts';
 	import Draft from './Draft.svelte';
 	import CoinFlip from './CoinFlip.svelte';
 	import Lobby from './Lobby.svelte';
@@ -42,7 +42,12 @@
 		<Lobby {room} {client} />
 	{:else}
 		<!-- On the last pick the draft stays up behind the reveal, then the stinger swaps in the summary. -->
-		<div class={room.phase === 'done' ? 'animate-leave' : ''}>
+		<div
+			class={room.phase === 'done' ? 'animate-leave' : ''}
+			style:animation-delay={room.phase === 'done' && room.last?.random
+				? `${2.4 + RANDOM_ROLL_S}s`
+				: null}
+		>
 			<Draft {room} {client} />
 		</div>
 		{#if room.phase === 'done'}
@@ -50,7 +55,7 @@
 		{/if}
 		{#if room.last}
 			{#key room.last.seq}
-				<Reveal last={room.last} />
+				<Reveal last={room.last} delay={room.last.random ? RANDOM_ROLL_S : 0} />
 			{/key}
 		{/if}
 		{#if room.phase === 'flip' && room.firstPick}
@@ -71,7 +76,9 @@
 						: room.phase === 'pick'
 							? 'Pick phase'
 							: 'Draft complete'}
-					delay={room.phase === 'done' || (room.format !== 'casual' && room.last) ? 1.9 : 0}
+					delay={room.phase === 'done' || (room.format !== 'casual' && room.last)
+						? 1.9 + (room.last?.random ? RANDOM_ROLL_S : 0)
+						: 0}
 				/>
 			{/key}
 		{/if}

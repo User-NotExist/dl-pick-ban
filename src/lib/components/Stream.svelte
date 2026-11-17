@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import CoinFlip from './CoinFlip.svelte';
 	import PatronBanner from './PatronBanner.svelte';
+	import RandomRoll from './RandomRoll.svelte';
 	import Reveal from './Reveal.svelte';
 	import Stinger from './Stinger.svelte';
 	import { HERO_BY_ID } from '#lib/heroes.ts';
@@ -10,6 +11,7 @@
 	import {
 		FLIP_REVEAL_DELAY_S,
 		LANES,
+		RANDOM_ROLL_S,
 		SLOTS_PER_LANE,
 		TEAM_NAMES,
 		TEAM_SIZE,
@@ -383,7 +385,10 @@
 			{#if room.phase !== 'lobby'}
 				{#if room.last}
 					{#key room.last.seq}
-						<Reveal last={room.last} />
+						{#if room.last.type === 'pick' && room.last.random}
+							<RandomRoll {room} last={room.last} />
+						{/if}
+						<Reveal last={room.last} delay={room.last.random ? RANDOM_ROLL_S : 0} />
 					{/key}
 				{/if}
 				{#if room.phase === 'flip' && room.firstPick}
@@ -401,7 +406,9 @@
 								: room.phase === 'pick'
 									? 'Pick phase'
 									: 'Draft complete'}
-							delay={room.phase === 'done' || (room.format !== 'casual' && room.last) ? 1.9 : 0}
+							delay={room.phase === 'done' || (room.format !== 'casual' && room.last)
+						? 1.9 + (room.last?.random ? RANDOM_ROLL_S : 0)
+						: 0}
 						/>
 					{/key}
 				{/if}

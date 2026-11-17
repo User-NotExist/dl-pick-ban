@@ -2,7 +2,21 @@
 	import { HERO_BY_ID } from '#lib/heroes.ts';
 	import { TEAM_NAMES, type LastEvent } from '#lib/types.ts';
 
-	let { last }: { last: LastEvent } = $props();
+	/** `delay`: seconds to wait first, for the roulette of a random pick */
+	let { last, delay: delayProp = 0 }: { last: LastEvent; delay?: number } = $props();
+
+	// fixed when the reveal appears; with reduced motion there is no roulette to wait for
+	// svelte-ignore state_referenced_locally
+	const delay =
+		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+			? 0
+			: delayProp;
+	let shown = $state(delay <= 0);
+	$effect(() => {
+		if (shown) return;
+		const t = setTimeout(() => (shown = true), delay * 1000);
+		return () => clearTimeout(t);
+	});
 
 	const hero = $derived(last.hero ? HERO_BY_ID.get(last.hero) : undefined);
 	/** the team ran out of time with nothing selected */
@@ -14,6 +28,7 @@
 </script>
 
 <!-- Headline band: sweeps in from the acting team's side, holds, exits the other side. -->
+{#if shown}
 <div
 	class="pointer-events-none fixed inset-0 z-40 overflow-hidden"
 	aria-hidden="true"
@@ -80,9 +95,10 @@
 						: ''}"
 					style:background-color={accent}
 				>
-					{noBan ? 'Time ran out' : ban ? 'Banned' : 'Selected'}
+					{noBan ? 'Time ran out' : ban ? 'Banned' : last.random ? 'Random' : 'Selected'}
 				</div>
 			</div>
 		</div>
 	</div>
 </div>
+{/if}

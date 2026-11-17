@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import PatronBanner from './PatronBanner.svelte';
 	import TurnCue from './TurnCue.svelte';
 	import { HEROES, HERO_BY_ID, RANDOM } from '#lib/heroes.ts';
 	import { LANE_STYLE } from '#lib/lanes.ts';
 	import type { RoomClient } from '#lib/room.svelte.ts';
+	import { Roll, rollCandidates } from '#lib/roll.svelte.ts';
 	import {
+		RANDOM_ROLL_S,
 		TEAM_NAMES,
 		TURN_GRACE_S,
 		laneOfSlot,
@@ -36,6 +39,23 @@
 
 	const banned = $derived(new Set(room.bans.map((b) => b.hero)));
 
+	// A random pick first plays a roulette over the pool: the highlight hops between the heroes
+	// that were free and lands on the rolled one. Until it lands, that hero still looks free.
+	const roll = new Roll();
+	const lastSeq = $derived(room.last?.seq);
+	$effect(() => {
+		if (lastSeq === undefined) return; // restarts on each new ban or pick, not on every snapshot
+		const last = untrack(() => room.last);
+		if (last?.type === 'pick' && last.random) roll.start(last, untrack(() => rollCandidates(room, last)));
+		return () => roll.stop();
+	});
+	/** the rolled hero, while the roulette has not landed on it yet */
+	const rolling = $derived(roll.active && !roll.landed ? (room.last?.hero ?? undefined) : undefined);
+	const rollPool = $derived(new Set(roll.candidates));
+	const rollColor = $derived(
+		room.last?.team === 'B' ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)'
+	);
+
 	// Turn clock. The extra grace the server allows is hidden: the display holds at the full
 	// limit while the previous reveal plays, then counts down.
 	let now = $state(Date.now());
@@ -53,7 +73,9 @@
 	const secondsLeft = $derived(msLeft === null ? null : Math.ceil(msLeft / 1000));
 	const urgent = $derived(secondsLeft !== null && secondsLeft <= 5);
 	const pickedBy = $derived(
-		new Map(room.players.filter((p) => p.hero).map((p) => [p.hero as string, p]))
+		new Map(
+			room.players.filter((p) => p.hero && p.hero !== rolling).map((p) => [p.hero as string, p])
+		)
 	);
 
 	const canAct = $derived.by(() => {
@@ -149,9 +171,12 @@
 		const first = room.last?.type !== turn.type;
 		// in Night Shift a phase can follow a reveal directly, and its stinger waits for that reveal
 		const direct = first && !!room.last && room.format !== 'casual';
-		const lead = direct ? 3.2 : first ? 1.3 : 2;
+		// a random pick's roulette plays before its reveal band
+		const extra = room.last?.random ? RANDOM_ROLL_S : 0;
+		const lead = (direct ? 3.2 : first ? 1.3 : 2) + extra;
 		if (client.deadline === null) return lead;
-		const elapsed = room.turnSeconds + TURN_GRACE_S - (client.deadline - Date.now()) / 1000;
+		const elapsed =
+			room.turnSeconds + TURN_GRACE_S + extra - (client.deadline - Date.now()) / 1000;
 		return Math.max(0, lead - elapsed);
 	});
 
@@ -259,7 +284,8 @@
 
 {#snippet seat(p: Player, team: Team)}
 	{@const order = room.pickOrder.indexOf(p.id) + 1}
-	{@const hero = p.hero ? HERO_BY_ID.get(p.hero) : undefined}
+	{@const hopping = !!rolling && p.hero === rolling ? HERO_BY_ID.get(roll.current ?? '') : undefined}
+	{@const hero = p.hero && p.hero !== rolling ? HERO_BY_ID.get(p.hero) : undefined}
 	{@const lane = laneOfSlot(p.slot ?? 0)}
 	{@const style = LANE_STYLE[lane.id]}
 	{@const picking = picker?.id === p.id}
@@ -282,6 +308,9 @@
 		>
 			{#if hero}
 				<img src={hero.card} alt="" class="h-full w-full animate-pop object-cover" />
+			{:else if hopping}
+				<!-- the roulette's seat follows the highlight until it lands -->
+				<img src={hopping.card} alt="" class="h-full w-full object-cover opacity-60" />
 			{:else if pending}
 				<img src={pending.card} alt="" class="h-full w-full animate-pulse object-cover opacity-60" />
 			{:else}
@@ -305,7 +334,7 @@
 					)}
 					{#if pending}{pending.name}?{/if}
 				{:else}
-					{hero ? hero.name : p.online || p.fake ? 'no hero yet' : 'offline'}
+					{hero ? hero.name : hopping ? 'Rolling…' : p.online || p.fake ? 'no hero yet' : 'offline'}
 				{/if}
 			</div>
 		</div>
@@ -500,6 +529,8 @@
 				{@const available = !isBanned && !owner}
 				{@const heroMarks = available ? (marksByHero.get(hero.id) ?? []) : []}
 				{@const leadMark = heroMarks.some((m) => m.lead)}
+				{@const hop = roll.current === hero.id}
+				{@const offRoll = roll.active && !rollPool.has(hero.id)}
 				<button
 					type="button"
 					disabled={!canSelect || !available}
@@ -517,6 +548,7 @@
 									? `${teamBorder(turn.team)} ${leadMark ? '' : 'border-dashed'}`
 									: 'border-brass/40'}
 						{leadMark && mySelection !== hero.id ? 'animate-glow' : ''}
+						{hop ? 'z-[2] scale-110 duration-75' : ''} {offRoll ? 'opacity-40' : ''}
 						{canSelect && available
 						? 'cursor-pointer hover:border-paper hover:brightness-115'
 						: 'cursor-default'}"
@@ -527,6 +559,10 @@
 							: owner?.team
 								? teamColor(owner.team)
 								: null}
+					style:border-color={hop ? rollColor : null}
+					style:box-shadow={hop
+						? `0 0 0 2px ${rollColor}, 0 0 22px 2px color-mix(in srgb, ${rollColor} 60%, transparent)`
+						: null}
 				>
 					<img
 						src={isBanned ? hero.banned : hero.card}
@@ -541,6 +577,16 @@
 							? ''
 							: 'opacity-80'}"
 					/>
+					{#if hop}
+						<!-- the roulette's highlight: lights the card in the picking team's colour -->
+						<span
+							class="absolute inset-0 mix-blend-screen {roll.landed ? 'animate-wash' : ''}"
+							style:background-color="color-mix(in srgb, {rollColor} 25%, transparent)"
+						></span>
+						{#if roll.landed}
+							<span class="absolute inset-y-0 left-0 w-1/2 animate-shine bg-paper/50"></span>
+						{/if}
+					{/if}
 					{#if isBanned}
 						<!-- struck from the pool: drained of colour and stamped, like a closed case file -->
 						<span class="absolute inset-0 animate-wash bg-red-950/30"></span>

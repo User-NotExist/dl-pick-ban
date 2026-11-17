@@ -1,6 +1,17 @@
 export type Team = 'A' | 'B';
-/** `flip` is the short coin-flip pause between the last ban and the first pick */
+/**
+ * `flip` is the short coin-flip pause that decides which team goes first: between the last ban
+ * and the first pick in Casual, before anything else in Night Shift.
+ */
 export type Phase = 'lobby' | 'ban' | 'flip' | 'pick' | 'done';
+
+/**
+ * Draft format, chosen by the host in the lobby.
+ * - `casual`: bans A-B-A-B, then a coin flip for first pick, then picks 1-2-2-...-1.
+ * - `nightshift`: coin flip first; with A the winner: ban A-B-A-B, pick A-B-B-A-B-A,
+ *   ban B-A, pick B-A-A-B-A-B.
+ */
+export type Format = 'casual' | 'nightshift';
 
 export interface Player {
 	id: string;
@@ -46,11 +57,14 @@ export interface RoomState {
 	code: string;
 	phase: Phase;
 	hostId: string;
+	format: Format;
 	players: Player[];
 	bans: Ban[];
+	/** ban slots each team has in this draft; depends on the format (and, in Night Shift, team sizes) */
+	bansPerTeam: number;
 	turn: Turn | null;
 	last: LastEvent | null;
-	/** team that won the coin flip for first pick; null until the flip, after the bans */
+	/** team that won the coin flip and goes first; null until the flip */
 	firstPick: Team | null;
 	/** player ids in pick order; empty until the coin flip has finished */
 	pickOrder: string[];
@@ -86,13 +100,19 @@ export type Action =
 	| { type: 'pick'; hero: string }
 	/** host only, in the lobby: set the time limit per turn (one of TURN_TIME_OPTIONS) */
 	| { type: 'setTimer'; seconds: number }
+	/** host only, in the lobby: choose the draft format */
+	| { type: 'setFormat'; format: Format }
 	| { type: 'reset' }
 	| { type: 'kick'; id: string }
 	/** host only, in the lobby: add a fake player (as a spectator) that the host acts for */
 	| { type: 'addFake'; name: string };
 
 export const TEAM_SIZE = 6;
-export const BANS_PER_TEAM = 2;
+export const FORMATS: readonly { id: Format; name: string }[] = [
+	{ id: 'casual', name: 'Casual' },
+	{ id: 'nightshift', name: 'Night Shift' }
+];
+export const DEFAULT_FORMAT: Format = 'casual';
 /** stands in for a hero id in a pick or a pick selection: the server rolls the hero on lock-in */
 export const RANDOM_HERO = 'random';
 /** selectable time limits per turn, in seconds; 0 turns the clock off */
@@ -100,7 +120,10 @@ export const TURN_TIME_OPTIONS = [0, 20, 30, 45, 60, 90] as const;
 export const DEFAULT_TURN_SECONDS = 30;
 /** added to every turn so the reveal animation of the previous one does not eat into it */
 export const TURN_GRACE_S = 2;
-/** Client timeline of the `flip` phase: wait for the last ban's reveal band, then the coin. */
+/**
+ * Client timeline of the `flip` phase: wait for the last ban's reveal band (only when a ban
+ * came before the flip), then the coin.
+ */
 export const FLIP_REVEAL_DELAY_S = 2;
 export const FLIP_COIN_S = 4.5;
 

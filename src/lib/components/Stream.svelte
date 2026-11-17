@@ -8,7 +8,7 @@
 	import { LANE_STYLE } from '#lib/lanes.ts';
 	import { RoomClient } from '#lib/room.svelte.ts';
 	import {
-		BANS_PER_TEAM,
+		FLIP_REVEAL_DELAY_S,
 		LANES,
 		SLOTS_PER_LANE,
 		TEAM_NAMES,
@@ -92,8 +92,8 @@
 	const phaseLabel = $derived.by(() => {
 		if (!room) return '';
 		if (room.phase === 'lobby') return `Lobby · ${seated.length} / ${TEAM_SIZE * 2} players`;
-		if (room.phase === 'flip') return 'First pick';
-		if (turn?.type === 'ban') return `Ban phase · ${room.bans.length + 1} / ${BANS_PER_TEAM * 2}`;
+		if (room.phase === 'flip') return room.format === 'casual' ? 'First pick' : 'Who goes first';
+		if (turn?.type === 'ban') return `Ban phase · ${room.bans.length + 1} / ${room.bansPerTeam * 2}`;
 		if (turn?.type === 'pick')
 			return `Pick phase · ${seated.filter((p) => p.hero).length + 1} / ${seated.length}`;
 		return 'Final draft';
@@ -246,7 +246,7 @@
 	<div class="flex min-w-0 items-center gap-5 {team === 'B' ? 'flex-row-reverse' : ''}">
 		<span class="font-display text-3xl font-bold tracking-[0.25em] text-paper/50 uppercase">Bans</span>
 		<div class="flex shrink-0 gap-3">
-			{#each { length: BANS_PER_TEAM }, i}
+			{#each { length: room?.bansPerTeam ?? 0 }, i}
 				{@const hero = HERO_BY_ID.get(list[i]?.hero ?? '')}
 				{@const skipped = !!list[i] && !list[i].hero}
 				{@const pending =
@@ -279,7 +279,9 @@
 				<span class="tag w-fit px-3 text-xl leading-tight {teamBg(team)}">Banning</span>
 			{/if}
 			{#if room?.firstPick === team && room.phase !== 'flip'}
-				<span class="tag w-fit px-3 text-xl leading-tight {teamBg(team)}">First pick</span>
+				<span class="tag w-fit px-3 text-xl leading-tight {teamBg(team)}"
+					>{room.format === 'casual' ? 'First pick' : 'Goes first'}</span
+				>
 			{/if}
 		</div>
 	</div>
@@ -385,17 +387,21 @@
 					{/key}
 				{/if}
 				{#if room.phase === 'flip' && room.firstPick}
-					<CoinFlip winner={room.firstPick} />
+					<CoinFlip
+				winner={room.firstPick}
+				format={room.format}
+				delay={room.last ? FLIP_REVEAL_DELAY_S : 0}
+			/>
 				{:else}
 					{#key room.phase}
-						<!-- after the final pick, wait for its reveal band before the closing wipe -->
+						<!-- wait for the reveal band of a ban or pick that led straight into this phase -->
 						<Stinger
 							title={room.phase === 'ban'
 								? 'Ban phase'
 								: room.phase === 'pick'
 									? 'Pick phase'
 									: 'Draft complete'}
-							delay={room.phase === 'done' ? 1.9 : 0}
+							delay={room.phase === 'done' || (room.format !== 'casual' && room.last) ? 1.9 : 0}
 						/>
 					{/key}
 				{/if}

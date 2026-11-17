@@ -5,7 +5,6 @@
 	import { LANE_STYLE } from '#lib/lanes.ts';
 	import type { RoomClient } from '#lib/room.svelte.ts';
 	import {
-		BANS_PER_TEAM,
 		TEAM_NAMES,
 		TURN_GRACE_S,
 		laneOfSlot,
@@ -146,17 +145,19 @@
 	 */
 	const cueDelay = $derived.by(() => {
 		if (!turn) return 0;
-		const first =
-			turn.type === 'ban' ? room.bans.length === 0 : !room.players.some((p) => p.hero);
-		const lead = first ? 1.3 : 2;
+		// first turn of a phase: nothing has happened yet, or the last thing was of the other kind
+		const first = room.last?.type !== turn.type;
+		// in Night Shift a phase can follow a reveal directly, and its stinger waits for that reveal
+		const direct = first && !!room.last && room.format !== 'casual';
+		const lead = direct ? 3.2 : first ? 1.3 : 2;
 		if (client.deadline === null) return lead;
 		const elapsed = room.turnSeconds + TURN_GRACE_S - (client.deadline - Date.now()) / 1000;
 		return Math.max(0, lead - elapsed);
 	});
 
 	const phaseLabel = $derived.by(() => {
-		if (room.phase === 'flip') return 'First pick';
-		if (turn?.type === 'ban') return `Ban phase · ${room.bans.length + 1} / ${BANS_PER_TEAM * 2}`;
+		if (room.phase === 'flip') return room.format === 'casual' ? 'First pick' : 'Who goes first';
+		if (turn?.type === 'ban') return `Ban phase · ${room.bans.length + 1} / ${room.bansPerTeam * 2}`;
 		if (turn?.type === 'pick') {
 			const seated = room.players.filter((p) => p.team);
 			return `Pick phase · ${seated.filter((p) => p.hero).length + 1} / ${seated.length}`;
@@ -165,7 +166,10 @@
 	});
 
 	const hint = $derived.by(() => {
-		if (room.phase === 'flip') return 'Deciding which team picks first';
+		if (room.phase === 'flip')
+			return room.format === 'casual'
+				? 'Deciding which team picks first'
+				: 'Deciding which team bans and picks first';
 		if (!turn) return '';
 		if (turn.type === 'ban') {
 			if (canAct)
@@ -217,7 +221,7 @@
 {#snippet banSlots(team: Team)}
 	{@const bans = room.bans.filter((b) => b.team === team)}
 	<div class="flex gap-2">
-		{#each { length: BANS_PER_TEAM }, i}
+		{#each { length: room.bansPerTeam }, i}
 			{@const hero = HERO_BY_ID.get(bans[i]?.hero ?? '')}
 			{@const skipped = !!bans[i] && !bans[i].hero}
 			{@const pending = turn?.type === 'ban' && turn.team === team && i === bans.length ? ghost : undefined}
@@ -313,27 +317,48 @@
 {/snippet}
 
 {#snippet teamHead(team: Team)}
+	<!-- three ban slots leave no room for the label beside them in the narrow column: it goes above -->
+	{@const stacked = room.bansPerTeam > 2}
 	<section
 		class="flex flex-col overflow-hidden border-t-2 bg-panel/90 transition {team === 'A'
 			? '[grid-area:ha]'
 			: '[grid-area:hb]'} {teamBorder(team)} {turn?.team === team ? 'animate-glow' : 'opacity-80'}"
 		style:--glow-color={team === 'B' ? 'var(--color-sapphire-team)' : 'var(--color-amber-team)'}
 	>
-		<PatronBanner {team} class="aspect-[3/1] lg:aspect-[5/2]" />
-		<div class="flex items-center justify-between gap-2 p-2 {team === 'B' ? 'flex-row-reverse' : ''}">
-			<div class="flex min-w-0 flex-col gap-0.5 {team === 'B' ? 'items-end' : 'items-start'}">
-				<span class="font-display text-sm font-bold tracking-[0.25em] text-paper/50 uppercase"
-					>Bans</span
-				>
-				{#if turn?.type === 'ban' && turn.team === team}
-					{@render turnTag(canAct ? 'Your ban' : 'Banning', canAct ? team : null)}
-				{/if}
+		<div class="relative">
+			<PatronBanner {team} class="aspect-[3/1] lg:aspect-[5/2]" />
+			<!-- the tags sit on the banner: beside the ban slots they would not fit -->
+			<div
+				class="absolute inset-x-0 bottom-0 flex flex-wrap-reverse items-end justify-between gap-1 p-1.5 {team ===
+				'B'
+					? 'flex-row-reverse'
+					: ''}"
+			>
 				{#if room.firstPick === team && room.phase !== 'flip'}
-					<span class="tag text-xs {teamBg(team)}" title="Won the coin flip: picks first and last"
-						>First pick</span
+					<span
+						class="tag text-xs {teamBg(team)}"
+						title={room.format === 'casual'
+							? 'Won the coin flip: picks first and last'
+							: 'Won the coin flip: bans first and picks first'}
+						>{room.format === 'casual' ? 'First pick' : 'Goes first'}</span
 					>
 				{/if}
+				{#if turn?.type === 'ban' && turn.team === team}
+					<!-- the auto margin keeps it on the inner side when it is the only tag -->
+					<span class={team === 'B' ? 'me-auto' : 'ms-auto'}>
+						{@render turnTag(canAct ? 'Your ban' : 'Banning', canAct ? team : null)}
+					</span>
+				{/if}
 			</div>
+		</div>
+		<div
+			class="flex gap-2 p-2 {stacked
+				? `flex-col ${team === 'B' ? 'items-end' : 'items-start'}`
+				: `items-center justify-between ${team === 'B' ? 'flex-row-reverse' : ''}`}"
+		>
+			<span class="font-display text-sm font-bold tracking-[0.25em] text-paper/50 uppercase"
+				>Bans</span
+			>
 			{@render banSlots(team)}
 		</div>
 	</section>

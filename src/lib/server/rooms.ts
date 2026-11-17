@@ -1,15 +1,17 @@
 import { HERO_IDS } from '../hero-ids';
 import {
-	BANS_PER_TEAM,
+	DEFAULT_FORMAT,
 	DEFAULT_TURN_SECONDS,
 	FLIP_COIN_S,
 	FLIP_REVEAL_DELAY_S,
+	FORMATS,
 	RANDOM_HERO,
 	TEAM_SIZE,
 	TURN_GRACE_S,
 	TURN_TIME_OPTIONS,
 	type Action,
 	type Ban,
+	type Format,
 	type LastEvent,
 	type Phase,
 	type Player,
@@ -59,12 +61,18 @@ export interface Room {
 	code: string;
 	phase: Phase;
 	hostId: string;
+	format: Format;
 	members: Member[];
 	bans: Ban[];
-	/** coin-flip winner: picks first and last */
+	/** coin-flip winner: goes first */
 	firstPick: Team | null;
-	/** member ids in pick order, fixed when the draft starts */
-	pickOrder: string[];
+	/**
+	 * The turns of the draft in order, as far as they are known: everything that depends on the
+	 * coin flip is added when it is made.
+	 */
+	steps: Turn[];
+	/** index into `steps` of the turn in progress */
+	step: number;
 	last: LastEvent | null;
 	seq: number;
 	flipTimer: Timer | null;
@@ -122,10 +130,12 @@ export function createRoom(): Room {
 		code,
 		phase: 'lobby',
 		hostId: '',
+		format: DEFAULT_FORMAT,
 		members: [],
 		bans: [],
 		firstPick: null,
-		pickOrder: [],
+		steps: [],
+		step: 0,
 		flipTimer: null,
 		turnSeconds: DEFAULT_TURN_SECONDS,
 		turnKey: null,
@@ -165,12 +175,8 @@ function scheduleExpiry(room: Room, ttl = EMPTY_ROOM_TTL) {
 }
 
 export function currentTurn(room: Room): Turn | null {
-	if (room.phase === 'ban') return { type: 'ban', team: room.bans.length % 2 === 0 ? 'A' : 'B' };
-	if (room.phase === 'pick') {
-		const picker = nextPicker(room);
-		if (picker?.team) return { type: 'pick', team: picker.team, playerId: picker.id };
-	}
-	return null;
+	if (room.phase !== 'ban' && room.phase !== 'pick') return null;
+	return room.steps[room.step] ?? null;
 }
 
 export function snapshot(room: Room, you: string): RoomState {
@@ -191,6 +197,7 @@ export function snapshot(room: Room, you: string): RoomState {
 		code: room.code,
 		phase: room.phase,
 		hostId: room.hostId,
+		format: room.format,
 		players: room.members.map(({ id, name, team, slot, hero, connections, fake }) => ({
 			id,
 			name,
@@ -202,11 +209,15 @@ export function snapshot(room: Room, you: string): RoomState {
 			fake
 		})),
 		bans: room.bans,
+		bansPerTeam: bansPerTeam(room),
 		turn,
 		last: room.last,
 		firstPick: room.firstPick,
 		// kept back during the flip so the seat numbers do not give the result away early
-		pickOrder: room.phase === 'flip' ? [] : room.pickOrder,
+		pickOrder:
+			room.phase === 'flip'
+				? []
+				: room.steps.flatMap((s) => (s.type === 'pick' ? [s.playerId] : [])),
 		selections,
 		turnSeconds: room.turnSeconds,
 		turnEndsIn: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now()),
@@ -361,23 +372,55 @@ export function subscribe(room: Room, member: Member, listener: Listener): () =>
 /** team members in seat order (lane by lane), which is also the pick order */
 const teamOf = (room: Room, team: Team) =>
 	room.members.filter((m) => m.team === team).sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
-const nextPicker = (room: Room) =>
-	room.pickOrder.map((id) => room.members.find((m) => m.id === id)).find((m) => m && !m.hero);
+
+/** Casual opens with these bans, before the coin flip. */
+const CASUAL_BANS: Team[] = ['A', 'B', 'A', 'B'];
+/** Night Shift, start to finish; `A` is the coin-flip winner. */
+const NIGHT_SHIFT = [
+	['ban', 'ABAB'],
+	['pick', 'ABBABA'],
+	['ban', 'BA'],
+	['pick', 'BAABAB']
+] as const;
+/** picks each team has made when Night Shift reaches its second ban phase */
+const NIGHT_SHIFT_FIRST_PICKS = 3;
+
+/** Ban slots per team. Night Shift drops its second ban phase when no picks would follow it. */
+function bansPerTeam(room: Room): number {
+	if (room.format === 'casual') return CASUAL_BANS.length / 2;
+	const late = Math.max(teamOf(room, 'A').length, teamOf(room, 'B').length) > NIGHT_SHIFT_FIRST_PICKS;
+	return late ? 3 : 2;
+}
 
 /**
- * Pick order: the first team picks once, then the teams alternate with two picks each, so
- * the first team also gets the last single pick (A, B B, A A, B B, ..., A). Within a team
- * players go in seat order. A team with nobody left is skipped, so uneven teams still work.
+ * The turns that follow the coin flip. Within a team players pick in seat order. A pick turn
+ * for a team with nobody left is skipped, so uneven and short teams still work.
+ *
+ * Casual: only picks are left. The first team picks once, then the teams alternate with two
+ * picks each, so the first team also gets the last single pick (A, B B, A A, B B, ..., A).
  */
-function buildPickOrder(room: Room, first: Team): string[] {
+function buildSteps(room: Room, first: Team): Turn[] {
 	const queue = { A: teamOf(room, 'A'), B: teamOf(room, 'B') };
-	const order: string[] = [];
-	for (let pos = 0; queue.A.length || queue.B.length; pos++) {
-		const team = Math.floor((pos + 1) / 2) % 2 === 0 ? first : other(first);
+	const steps: Turn[] = [];
+	const pick = (team: Team) => {
 		const next = queue[team].shift();
-		if (next) order.push(next.id);
+		if (next) steps.push({ type: 'pick', team, playerId: next.id });
+	};
+	if (room.format === 'casual') {
+		for (let pos = 0; queue.A.length || queue.B.length; pos++)
+			pick(Math.floor((pos + 1) / 2) % 2 === 0 ? first : other(first));
+		return steps;
 	}
-	return order;
+	for (const [type, order] of NIGHT_SHIFT) {
+		// bans with no picks left to follow them are pointless
+		if (type === 'ban' && !queue.A.length && !queue.B.length) continue;
+		for (const side of order) {
+			const team = side === 'A' ? first : other(first);
+			if (type === 'ban') steps.push({ type, team });
+			else pick(team);
+		}
+	}
+	return steps;
 }
 
 function freeSlots(room: Room, team: Team, except?: Member): number[] {
@@ -405,12 +448,12 @@ function randomHero(room: Room): string {
 }
 
 /**
- * After the last ban: flip the coin for first pick and hold the draft in the `flip` phase
- * while clients play the animation, so nobody can pick before the coin has landed.
+ * Flip the coin for who goes first and hold the draft in the `flip` phase while clients play
+ * the animation, so nobody can act before the coin has landed.
  */
 function startFlip(room: Room) {
 	room.firstPick = Math.random() < 0.5 ? 'A' : 'B';
-	room.pickOrder = buildPickOrder(room, room.firstPick);
+	room.steps.push(...buildSteps(room, room.firstPick));
 	room.phase = 'flip';
 	room.flipTimer = setTimeout(
 		() => {
@@ -418,7 +461,8 @@ function startFlip(room: Room) {
 			syncTurnTimer(room);
 			broadcast(room);
 		},
-		(FLIP_REVEAL_DELAY_S + FLIP_COIN_S) * 1000
+		// clients let the reveal of a ban made just before the flip play out first
+		((room.last ? FLIP_REVEAL_DELAY_S : 0) + FLIP_COIN_S) * 1000
 	);
 	unref(room.flipTimer);
 }
@@ -426,7 +470,16 @@ function startFlip(room: Room) {
 export function finishFlip(room: Room) {
 	if (room.flipTimer) clearTimeout(room.flipTimer);
 	room.flipTimer = null;
-	if (room.phase === 'flip') room.phase = 'pick';
+	if (room.phase === 'flip') room.phase = room.steps[room.step]?.type ?? 'done';
+}
+
+/** The turn in progress has been taken: move on to the next one, the coin flip, or the end. */
+function advance(room: Room) {
+	room.step++;
+	const next = room.steps[room.step];
+	if (next) room.phase = next.type;
+	else if (room.firstPick === null) startFlip(room);
+	else room.phase = 'done';
 }
 
 function clearSelections(room: Room) {
@@ -438,7 +491,7 @@ function applyBan(room: Room, team: Team, hero: string | null) {
 	room.bans.push({ team, hero });
 	room.last = { seq: ++room.seq, type: 'ban', team, hero, player: null };
 	clearSelections(room);
-	if (room.bans.length >= BANS_PER_TEAM * 2) startFlip(room);
+	advance(room);
 }
 
 function applyPick(room: Room, picker: Member, hero: string) {
@@ -446,7 +499,7 @@ function applyPick(room: Room, picker: Member, hero: string) {
 	picker.hero = hero;
 	room.last = { seq: ++room.seq, type: 'pick', team: picker.team, hero, player: picker.name };
 	clearSelections(room);
-	if (!nextPicker(room)) room.phase = 'done';
+	advance(room);
 }
 
 /** The player due to pick, if `me` may act for that turn: the picker, or the host while the picker is offline. */
@@ -617,10 +670,16 @@ export function act(room: Room, token: string, action: Action) {
 			room.bans = [];
 			for (const m of room.members) m.hero = null;
 			room.firstPick = null;
-			room.pickOrder = [];
+			room.steps = [];
+			room.step = 0;
 			room.last = null;
 			clearSelections(room);
-			room.phase = 'ban';
+			if (room.format === 'casual') {
+				room.steps = CASUAL_BANS.map((team) => ({ type: 'ban', team }));
+				room.phase = 'ban';
+			} else {
+				startFlip(room);
+			}
 			break;
 		}
 		case 'select': {
@@ -665,12 +724,21 @@ export function act(room: Room, token: string, action: Action) {
 			room.turnSeconds = action.seconds;
 			break;
 		}
+		case 'setFormat': {
+			requireHost(room, me);
+			if (room.phase !== 'lobby')
+				throw new RoomError('The format can only be changed in the lobby');
+			if (!FORMATS.some((f) => f.id === action.format)) throw new RoomError('Invalid format');
+			room.format = action.format;
+			break;
+		}
 		case 'reset': {
 			requireHost(room, me);
 			finishFlip(room);
 			room.phase = 'lobby';
 			room.firstPick = null;
-			room.pickOrder = [];
+			room.steps = [];
+			room.step = 0;
 			room.last = null;
 			clearSelections(room);
 			room.bans = [];
@@ -706,13 +774,20 @@ export function act(room: Room, token: string, action: Action) {
 			if (room.members.length >= MAX_IN_ROOM) throw new RoomError('Room is full');
 			if (room.members.filter((m) => m.fake).length >= MAX_FAKES)
 				throw new RoomError(`A room can have at most ${MAX_FAKES} fake players`);
+			// seated on the smaller team (a coin flip when they are level), or left a spectator
+			// when both are full
+			const open = (['A', 'B'] as const)
+				.map((team) => ({ team, free: freeSlots(room, team) }))
+				.filter((t) => t.free.length > 0)
+				.sort((x, y) => y.free.length - x.free.length || Math.random() - 0.5);
+			const seat = open[0];
 			room.members.push({
 				id: randomId(),
 				// never handed out, so no request can act as this member; only the host acts for it
 				token: crypto.randomUUID(),
 				name,
-				team: null,
-				slot: null,
+				team: seat?.team ?? null,
+				slot: seat?.free[0] ?? null,
 				hero: null,
 				fake: true,
 				connections: 0,

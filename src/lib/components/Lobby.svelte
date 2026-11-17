@@ -3,11 +3,13 @@
 	import { PATRON_ART, PATRON_COLOR } from '#lib/patrons.ts';
 	import type { RoomClient } from '#lib/room.svelte.ts';
 	import {
+		FORMATS,
 		LANES,
 		SLOTS_PER_LANE,
 		TEAM_NAMES,
 		TEAM_SIZE,
 		TURN_TIME_OPTIONS,
+		type Format,
 		type Player,
 		type RoomState,
 		type Team
@@ -388,6 +390,19 @@
 				Start draft
 			</button>
 			<label class="flex items-center gap-2 text-sm text-paper/70">
+				Format
+				<select
+					value={room.format}
+					onchange={(e) =>
+						client.send({ type: 'setFormat', format: e.currentTarget.value as Format })}
+					class="border border-brass/40 bg-ink px-2 py-1.5 text-paper"
+				>
+					{#each FORMATS as f (f.id)}
+						<option value={f.id}>{f.name}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="flex items-center gap-2 text-sm text-paper/70">
 				Time per turn
 				<select
 					value={room.turnSeconds}
@@ -403,7 +418,7 @@
 			{#if blocker}<span class="text-sm text-paper/50">{blocker}</span>{/if}
 		{:else}
 			<span class="text-sm text-paper/60">
-				Time per turn: {room.turnSeconds ? `${room.turnSeconds} seconds` : 'no limit'} ·
+				Format: {FORMATS.find((f) => f.id === room.format)?.name} · Time per turn: {room.turnSeconds ? `${room.turnSeconds} seconds` : 'no limit'} ·
 			</span>
 			<span class="text-sm text-paper/60">
 				{blocker || 'Waiting for the host to start the draft'}
@@ -424,9 +439,17 @@
 		</p>
 	{/if}
 	<p class="text-sm text-paper/40">
-		A coin flip at the start decides which team picks first. That team picks once, then the teams
-		take two picks each in turn, and the first team gets the last pick. Within a team, players
-		pick lane by lane from Yellow to Green, the front-row player (next to the midline) first.
+		{#if room.format === 'casual'}
+			Casual: each team bans {room.bansPerTeam} heroes in turn, then a coin flip decides which team
+			picks first. That team picks once, then the teams take two picks each in turn, and the first
+			team gets the last pick.
+		{:else}
+			Night Shift: a coin flip at the start decides which team goes first. With that team as A:
+			bans A-B-A-B, picks A-B-B-A-B-A{#if room.bansPerTeam > 2}, bans B-A, picks B-A-A-B-A-B{/if}.
+			A pick turn for a team with no players left to pick is skipped.
+		{/if}
+		Within a team, players pick lane by lane from Yellow to Green, the front-row player (next to
+		the midline) first.
 		{#if room.turnSeconds}
 			Each ban and pick has {room.turnSeconds} seconds: when time runs out the selected hero is
 			locked in. With nothing selected, a ban is forfeited and a pick becomes a random hero.

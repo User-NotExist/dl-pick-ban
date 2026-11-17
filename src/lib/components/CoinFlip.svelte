@@ -1,19 +1,22 @@
 <script lang="ts">
 	import { PATRON_ICON } from '#lib/patrons.ts';
-	import { FLIP_REVEAL_DELAY_S, TEAM_NAMES, type Team } from '#lib/types.ts';
+	import { TEAM_NAMES, type Format, type Team } from '#lib/types.ts';
 
-	let { winner }: { winner: Team } = $props();
+	/** `delay`: seconds to wait first, for the reveal band of a ban made just before the flip */
+	let { winner, format, delay = 0 }: { winner: Team; format: Format; delay?: number } = $props();
 
-	// everything waits for the last ban's reveal band to clear
-	const start = FLIP_REVEAL_DELAY_S;
+	// svelte-ignore state_referenced_locally
+	const start = delay;
 	const landed = start + 2.9;
+	/** Casual flips for the picks only; in Night Shift the winner opens the bans as well */
+	const prize = $derived(format === 'casual' ? 'First pick' : 'Goes first');
 	const teamColor = $derived(
 		winner === 'A' ? 'var(--color-amber-team)' : 'var(--color-sapphire-team)'
 	);
 </script>
 
 <!--
-	Coin flip for first pick. The coin has a patron on each face; it always makes whole turns
+	Coin flip for who goes first. The coin has a patron on each face; it always makes whole turns
 	and ends on the winner's face (an extra half turn for the Archmother, who is on the back).
 	With reduced motion the stage is shown without animating, already on the result.
 -->
@@ -23,7 +26,7 @@
 	role="status"
 >
 	<div class="font-display text-xl font-semibold tracking-[0.4em] text-paper/70 uppercase">
-		Coin flip · First pick
+		Coin flip · {prize}
 	</div>
 
 	<div class="[perspective:900px]">
@@ -60,7 +63,7 @@
 			style:background-color={teamColor}
 			style:animation-delay="{landed + 0.15}s"
 		>
-			Picks first
+			{format === 'casual' ? 'Picks first' : 'Goes first'}
 		</div>
 	</div>
 </div>

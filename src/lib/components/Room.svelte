@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { identity } from '#lib/identity.svelte.ts';
 	import { RoomClient } from '#lib/room.svelte.ts';
+	import { FLIP_REVEAL_DELAY_S } from '#lib/types.ts';
 	import Draft from './Draft.svelte';
 	import CoinFlip from './CoinFlip.svelte';
 	import Lobby from './Lobby.svelte';
@@ -53,17 +54,24 @@
 			{/key}
 		{/if}
 		{#if room.phase === 'flip' && room.firstPick}
-			<CoinFlip winner={room.firstPick} />
+			<CoinFlip
+				winner={room.firstPick}
+				format={room.format}
+				delay={room.last ? FLIP_REVEAL_DELAY_S : 0}
+			/>
 		{:else}
 			{#key room.phase}
-				<!-- after the final pick, wait for its reveal band before wiping to the summary -->
+				<!--
+					After the final pick, wait for its reveal band before wiping to the summary. Likewise
+					in Night Shift, where one phase follows another without a coin flip in between.
+				-->
 				<Stinger
 					title={room.phase === 'ban'
 						? 'Ban phase'
 						: room.phase === 'pick'
 							? 'Pick phase'
 							: 'Draft complete'}
-					delay={room.phase === 'done' ? 1.9 : 0}
+					delay={room.phase === 'done' || (room.format !== 'casual' && room.last) ? 1.9 : 0}
 				/>
 			{/key}
 		{/if}

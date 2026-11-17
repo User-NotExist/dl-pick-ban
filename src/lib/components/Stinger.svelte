@@ -1,5 +1,8 @@
 <script lang="ts">
-	let { title, delay = 0 }: { title: string; delay?: number } = $props();
+	let { title, delay: delayProp = 0 }: { title: string; delay?: number } = $props();
+	// fixed when the stinger appears: a later change must not shift an animation already played
+	// svelte-ignore state_referenced_locally
+	const delay = delayProp;
 </script>
 
 <!--
